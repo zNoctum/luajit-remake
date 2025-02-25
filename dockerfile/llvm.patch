@@ -185,3 +185,84 @@ index 81729e361..abc387bcd 100644
    Optional<ExtAddrMode>
    getAddrModeFromMemoryOp(const MachineInstr &MemI,
                            const TargetRegisterInfo *TRI) const override;
+diff --git a/llvm/lib/IR/ConstantFold.cpp b/llvm/lib/IR/ConstantFold.cpp
+index 98adff107..76d408a2a 100644
+--- a/llvm/lib/IR/ConstantFold.cpp
++++ b/llvm/lib/IR/ConstantFold.cpp
+@@ -30,6 +30,7 @@
+ #include "llvm/IR/Operator.h"
+ #include "llvm/IR/PatternMatch.h"
+ #include "llvm/Support/ErrorHandling.h"
++#include "llvm/IR/ConstantRange.h"
+ using namespace llvm;
+ using namespace llvm::PatternMatch;
+
+@@ -1387,9 +1388,18 @@ static ICmpInst::Predicate areGlobalsPotentiallyEqual(const GlobalValue *GV1,
+     return false;
+   };
+   // Don't try to decide equality of aliases.
+-  if (!isa<GlobalAlias>(GV1) && !isa<GlobalAlias>(GV2))
+-    if (!isGlobalUnsafeForEquality(GV1) && !isGlobalUnsafeForEquality(GV2))
+-      return ICmpInst::ICMP_NE;
++  if (!isa<GlobalAlias>(GV1) && !isa<GlobalAlias>(GV2)) {
++    if (!isGlobalUnsafeForEquality(GV1) && !isGlobalUnsafeForEquality(GV2)) {
++      if (GV1->isAbsoluteSymbolRef() && GV1->isAbsoluteSymbolRef()) {
++        if (GV1->getAbsoluteSymbolRange()
++             ->intersectWith(GV2->getAbsoluteSymbolRange().value())
++             .isEmptySet())
++          return llvm::CmpInst::ICMP_NE;
++      } else {
++        return ICmpInst::ICMP_NE;
++        }
++      }
++    }
+   return ICmpInst::BAD_ICMP_PREDICATE;
+ }
+
+@@ -1456,6 +1466,8 @@ static ICmpInst::Predicate evaluateICmpRelation(Constant *V1, Constant *V2,
+     if (const GlobalValue *GV2 = dyn_cast<GlobalValue>(V2)) {
+       return areGlobalsPotentiallyEqual(GV, GV2);
+     } else if (isa<BlockAddress>(V2)) {
++      if (GV->isAbsoluteSymbolRef())
++        return ICmpInst::BAD_ICMP_PREDICATE;
+       return ICmpInst::ICMP_NE; // Globals never equal labels.
+     } else {
+       assert(isa<ConstantPointerNull>(V2) && "Canonicalization guarantee!");
+@@ -1466,7 +1478,8 @@ static ICmpInst::Predicate evaluateICmpRelation(Constant *V1, Constant *V2,
+       // query it from the Constant type.
+       if (!GV->hasExternalWeakLinkage() && !isa<GlobalAlias>(GV) &&
+           !NullPointerIsDefined(nullptr /* F */,
+-                                GV->getType()->getAddressSpace()))
++                                GV->getType()->getAddressSpace()) &&
++          !GV->isAbsoluteSymbolRef())
+         return ICmpInst::ICMP_UGT;
+     }
+   } else if (const BlockAddress *BA = dyn_cast<BlockAddress>(V1)) {
+diff --git a/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp b/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp
+index f88037e95..fcda3a738 100644
+--- a/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp
++++ b/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp
+@@ -1786,6 +1786,14 @@ bool X86DAGToDAGISel::matchWrapper(SDValue N, X86ISelAddressMode &AM) {
+     return true;
+   }
+
++  if (Subtarget->is64Bit() && false && AM.GV->isAbsoluteSymbolRef()) {
++  Optional<ConstantRange> CR = AM.GV->getAbsoluteSymbolRange();
++    if (CR.getValue().getMinSignedBits() > 32) {
++      AM = Backup;
++      return true;
++    }
++  }
++
+   if (IsRIPRel)
+     AM.setBaseReg(CurDAG->getRegister(X86::RIP, MVT::i64));
+
+@@ -2693,7 +2701,7 @@ bool X86DAGToDAGISel::selectMOV64Imm32(SDValue N, SDValue &Imm) {
+   if (!CR)
+     return TM.getCodeModel() == CodeModel::Small;
+
+-  return CR->getUnsignedMax().ult(1ull << 32);
++  return CR->getMinSignedBits() <= 32;
+ }
+
+ bool X86DAGToDAGISel::selectLEA64_32Addr(SDValue N, SDValue &Base,

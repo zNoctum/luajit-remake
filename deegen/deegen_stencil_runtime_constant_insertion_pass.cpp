@@ -169,6 +169,11 @@ llvm::GlobalVariable* WARN_UNUSED DeegenInsertOrGetCopyAndPatchPlaceholderSymbol
         ReleaseAssert(gv->getName().str() == symName);
         gv->setAlignment(MaybeAlign(1));
         gv->setDSOLocal(true);
+        auto *MD = MDNode::get(ctx, {
+            ValueAsMetadata::get(ConstantInt::getSigned(llvm_type_of<uint64_t>(ctx), -1)),
+            ValueAsMetadata::get(ConstantInt::getSigned(llvm_type_of<uint64_t>(ctx), -1))
+        });
+        gv->setMetadata(LLVMContext::MD_absolute_symbol, MD);
     }
 
     GlobalVariable* gv = module->getGlobalVariable(symName);
@@ -458,56 +463,10 @@ end:
         {
             uint64_t ord;
             CPRuntimeConstantNodeBase* symbol;
-            Constant* subend;
         };
 
         std::unordered_map<CPRuntimeConstantNodeBase* /*origin*/, CpPlaceholderInfo> rcList;
         uint64_t rcCnt = 0;
-
-        // Honestly, these are really bad.. I have no idea how to properly work with APInt and ConstantRange, but these should work...
-        //
-        // Return the # of values in the range
-        // Note that if the range is full 64-bits, return maxUInt64 to avoid overflow
-        //
-        auto getNumElementsInRange = [&](ConstantRange cr) -> uint64_t
-        {
-            ReleaseAssert(!cr.isEmptySet());
-            ReleaseAssert(8 <= cr.getBitWidth() && cr.getBitWidth() <= 64);
-            if (cr.isFullSet())
-            {
-                if (cr.getBitWidth() == 64)
-                {
-                    return std::numeric_limits<uint64_t>::max();
-                }
-                else
-                {
-                    return static_cast<uint64_t>(1) << (cr.getBitWidth());
-                }
-            }
-            else
-            {
-                uint64_t lb = cr.getLower().extractBitsAsZExtValue(64, 0);
-                uint64_t ub = cr.getUpper().extractBitsAsZExtValue(64, 0);
-                if (lb < ub)
-                {
-                    return ub - lb;
-                }
-                else
-                {
-                    ReleaseAssert(lb > ub);
-                    if (cr.getBitWidth() == 64)
-                    {
-                        return ub - lb;
-                    }
-                    else
-                    {
-                        uint64_t msk = static_cast<uint64_t>(1) << cr.getBitWidth();
-                        ReleaseAssert(lb < msk);
-                        return msk - lb + ub;
-                    }
-                }
-            }
-        };
 
         // Properly inserts instructions before 'insertBefore', and returns a value that may be used to replace the value corresponding to 'rc'
         // Note that it always returns an integer value. Caller may need to cast it to the proper pointer type as necessary.
@@ -516,76 +475,23 @@ end:
         //
         auto insertRc = [&](CPRuntimeConstantNodeBase* rc, Instruction* insertBefore) WARN_UNUSED -> Instruction*
         {
-            // Under System V ABI, an external symbol has range [1, 2^31 - 16MB)
-            // To safely represent a runtime constant using an external symbol, we must retrofit it into the range of the external symbol
-            // For example, if the runtime constant is a i32 with range [-10, 100],
-            // we must represent it by trunc<i32>(sym) - 11 with 'sym' defined as zext<i64>(original value + 11)
-            //
-            uint64_t rlim = (1ULL << 31) - (16ULL << 20) - 1024;
-            if (getNumElementsInRange(rc->m_range) > rlim)
-            {
-                return nullptr;
-            }
-
-            auto isNoAdjustmentNeeded = [&](ConstantRange cr) WARN_UNUSED -> bool
-            {
-                if (cr.getBitWidth() <= 16)
-                {
-                    // [1, 2^31 - 16MB) clearly covers all bit patterns of [0, 65535], no adjustment needed
-                    //
-                    return true;
-                }
-                else if (cr.getBitWidth() == 32)
-                {
-                    ConstantRange rng(APInt(32, 1), APInt(32, (1ULL << 31) - (16ULL << 20)));
-                    return rng.contains(cr);
-                }
-                else
-                {
-                    ReleaseAssert(cr.getBitWidth() == 64);
-                    ConstantRange rng(APInt(64, 1), APInt(64, (1ULL << 31) - (16ULL << 20)));
-                    return rng.contains(cr);
-                }
-            };
-
             if (!rcList.count(rc))
             {
                 CPRuntimeConstantNodeBase* sym = rc;
-                Constant* subend = nullptr;
-
-                if (isNoAdjustmentNeeded(rc->m_range))
-                {
-                    subend = ConstantInt::get(ctx, APInt(rc->m_bitWidth, 0));
-                }
-                else
-                {
-                    // Need to adjust m_min to 1
-                    //
-                    APInt lb = rc->m_range.getLower();
-                    APInt valToSubtract = APInt(rc->m_bitWidth, 1) - lb;
-                    sym = new CPExprBinaryOp(CPExprBinaryOp::Add, sym, new CPExprFixedConstant(rc->m_bitWidth, valToSubtract.getSExtValue()));
-                    subend = ConstantInt::get(ctx, valToSubtract);
-                    ReleaseAssert(isNoAdjustmentNeeded(sym->m_range));
-                }
 
                 if (sym->m_bitWidth < 64)
                 {
                     sym = new CPExprUnaryOp(CPExprUnaryOp::ZExt, sym, 64);
                 }
 
-                // After the adjustment, 'sym' should always meet the assumption of System V ABI external symbol
-                //
                 ReleaseAssert(sym->m_bitWidth == 64);
-                ReleaseAssert(subend != nullptr);
-                rcList[rc] = { .ord = rcCnt, .symbol = sym, .subend = subend };
+                rcList[rc] = { .ord = rcCnt, .symbol = sym };
                 rcCnt++;
             }
 
             ReleaseAssert(rcList.count(rc));
             uint64_t ord = rcList[rc].ord;
             GlobalVariable* gv = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(module, ord);
-
-            Constant* subend = rcList[rc].subend;
 
             // 'gv' is the adjusted symbol. Now in LLVM IR, we need to undo the adjustment to get the original value back
             //
@@ -598,9 +504,7 @@ end:
                 res = new TruncInst(res, Type::getIntNTy(ctx, rc->m_bitWidth), "", insertBefore);
             }
 
-            ReleaseAssert(subend->getType() == res->getType());
-            res = CreateSub(res, rcList[rc].subend);
-            res->insertBefore(insertBefore);
+            ReleaseAssert(gv->isAbsoluteSymbolRef());
 
             return res;
         };
