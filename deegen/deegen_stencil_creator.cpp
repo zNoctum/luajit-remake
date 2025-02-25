@@ -967,6 +967,11 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
             size_t len;
             switch (rr.m_relocationType)
             {
+            case ELF::R_X86_64_8:
+            {
+                len = 1;
+                break;
+            }
             case ELF::R_X86_64_PLT32:
             case ELF::R_X86_64_PC32:
             case ELF::R_X86_64_32S:
@@ -1060,6 +1065,15 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
             uint32_t oldVal = UnalignedLoad<uint32_t>(p);
             uint32_t newVal = oldVal + static_cast<uint32_t>(static_cast<int32_t>(rr.m_addend));
             UnalignedStore<uint32_t>(p, newVal);
+            break;
+        }
+        case ELF::R_X86_64_8:
+        {
+            ReleaseAssert(rr.m_offset + 1 <= codeLen);
+            void* p = buf + rr.m_offset;
+            uint8_t oldVal = UnalignedLoad<uint8_t>(p);
+            uint8_t newVal = oldVal + static_cast<uint8_t>(static_cast<int8_t>(rr.m_addend));
+            UnalignedStore<uint8_t>(p, newVal);
             break;
         }
         case ELF::R_X86_64_64:
@@ -1263,6 +1277,19 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
             fprintf(fp, "}\n");
             break;
         }
+        case ELF::R_X86_64_8:
+        {
+            markAsRelocBytes(rr.m_offset, 1);
+            uint8_t oldVal = UnalignedLoad<uint8_t>(buf + rr.m_offset);
+            fprintf(fp, "{\n");
+            emitSymbolValue(rr);
+            UnalignedStore<uint8_t>(buf + rr.m_offset, 0);
+            fprintf(fp, "deegen_cp_store8(deegen_dstAddr + %llu, static_cast<uint8_t>(%lluU) + static_cast<uint8_t>(deegen_patch_symval));\n",
+                    static_cast<unsigned long long>(rr.m_offset),
+                    static_cast<unsigned long long>(oldVal));
+            fprintf(fp, "}\n");
+            break;
+        }
         case ELF::R_X86_64_64:
         {
             markAsRelocBytes(rr.m_offset, 8);
@@ -1327,6 +1354,8 @@ DeegenStencilCodegenResult WARN_UNUSED DeegenStencil::PrintCodegenFunctions(
 
     fprintf(fp, "template<typename T> using RestrictPtr = T* __restrict__;\n");
 
+    fprintf(fp, "[[maybe_unused]] static void __attribute__((__always_inline__)) deegen_cp_store8(RestrictPtr<uint8_t> ptr, uint8_t val)"
+                " { memcpy(ptr, &val, 1); }\n");
     fprintf(fp, "[[maybe_unused]] static void __attribute__((__always_inline__)) deegen_cp_store32(RestrictPtr<uint8_t> ptr, uint32_t val)"
                 " { memcpy(ptr, &val, 4); }\n");
     fprintf(fp, "[[maybe_unused]] static void __attribute__((__always_inline__)) deegen_cp_store64(RestrictPtr<uint8_t> ptr, uint64_t val)"

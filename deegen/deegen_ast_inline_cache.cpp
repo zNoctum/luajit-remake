@@ -2807,7 +2807,7 @@ AstInlineCache::BaselineJitLLVMLoweringResult WARN_UNUSED AstInlineCache::DoLowe
         }
         ReleaseAssert(iaFty != nullptr && ia != nullptr);
 
-        GlobalVariable* cpSym = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(module, CP_PLACEHOLDER_GENERIC_IC_KEY);
+        GlobalVariable* cpSym = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(module, CP_PLACEHOLDER_GENERIC_IC_KEY, /*lower*/ -1, /*upper*/ -1);
         ReleaseAssert(llvm_value_has_type<void*>(cpSym));
 
         CallBrInst* inst = CallBrInst::Create(iaFty,

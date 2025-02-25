@@ -497,7 +497,7 @@ static void InsertBaselineJitCallIcMagicAsmForDirectCall(llvm::Module* module,
 
     ReleaseAssert(llvm_value_has_type<uint64_t>(tv));
 
-    GlobalVariable* cpSym = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(module, CP_PLACEHOLDER_CALL_IC_DIRECT_CALL_TVALUE);
+    GlobalVariable* cpSym = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(module, CP_PLACEHOLDER_CALL_IC_DIRECT_CALL_TVALUE, /*lower*/ -1, /*upper*/ -1);
     ReleaseAssert(llvm_value_has_type<void*>(cpSym));
 
     FunctionType* fty = FunctionType::get(llvm_type_of<uint64_t>(ctx), { llvm_type_of<uint64_t>(ctx), llvm_type_of<void*>(ctx) }, false);
@@ -553,7 +553,7 @@ static void InsertBaselineJitCallIcMagicAsmForClosureCall(llvm::Module* module,
 
     ReleaseAssert(llvm_value_has_type<uint32_t>(codeBlockSysHeapPtrVal));
 
-    GlobalVariable* cpSym = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(module, CP_PLACEHOLDER_CALL_IC_CALLEE_CB32);
+    GlobalVariable* cpSym = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(module, CP_PLACEHOLDER_CALL_IC_CALLEE_CB32, /*lower*/ 0, /*upper*/ UINT32_MAX + 1);
     ReleaseAssert(llvm_value_has_type<void*>(cpSym));
 
     FunctionType* fty = FunctionType::get(llvm_type_of<void>(ctx), { llvm_type_of<uint32_t>(ctx), llvm_type_of<void*>(ctx) }, false);
@@ -662,10 +662,10 @@ std::vector<DeegenCallIcLogicCreator::BaselineJitLLVMLoweringResult> WARN_UNUSED
     {
         ReleaseAssert(isa<CallInst>(dcHitOrigin));
 
-        GlobalVariable* gv = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(ifi->GetModule(), CP_PLACEHOLDER_CALL_IC_CALLEE_CB32);
+        GlobalVariable* gv = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(ifi->GetModule(), CP_PLACEHOLDER_CALL_IC_CALLEE_CB32, /*lower*/ 0, /*upper*/ UINT32_MAX + 1);
         Value* iGv = new PtrToIntInst(gv, llvm_type_of<uint32_t>(ctx), "", dcHitOrigin);
         Value* dcHitCalleeCb = ifi->CallDeegenCommonSnippet("GetCbFromU32", { iGv }, dcHitOrigin);
-        Value* dcHitCodePtr = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(ifi->GetModule(), CP_PLACEHOLDER_CALL_IC_CALLEE_CODE_PTR);
+        Value* dcHitCodePtr = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(ifi->GetModule(), CP_PLACEHOLDER_CALL_IC_CALLEE_CODE_PTR, /*lower*/ -1, /*upper*/ -1);
 
         finalRes.push_back({
             .calleeCb = dcHitCalleeCb,
@@ -705,7 +705,7 @@ std::vector<DeegenCallIcLogicCreator::BaselineJitLLVMLoweringResult> WARN_UNUSED
         ReleaseAssert(llvm_value_has_type<uint32_t>(calleeCbU32));
 
         Value* calleeCb = ifi->CallDeegenCommonSnippet("GetCbFromU32", { calleeCbU32 }, ccHitOrigin);
-        Value* codePtr = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(ifi->GetModule(), CP_PLACEHOLDER_CALL_IC_CALLEE_CODE_PTR);
+        Value* codePtr = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(ifi->GetModule(), CP_PLACEHOLDER_CALL_IC_CALLEE_CODE_PTR, /*lower*/ -1, /*upper*/ -1);
 
         finalRes.push_back({
             .calleeCb = calleeCb,
@@ -736,8 +736,8 @@ std::vector<DeegenCallIcLogicCreator::BaselineJitLLVMLoweringResult> WARN_UNUSED
         icCreatorFn->setCallingConv(CallingConv::PreserveMost);
 
         Value* slowPathDataOffset = ifi->GetSlowPathDataOffsetFromJitFastPath(icMissOrigin /*insertBefore*/);
-        Value* slowPathAddrOfThisStencil = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(ifi->GetModule(), CP_PLACEHOLDER_STENCIL_SLOW_PATH_ADDR);
-        Value* dataSecAddrOfThisStencil = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(ifi->GetModule(), CP_PLACEHOLDER_STENCIL_DATA_SEC_ADDR);
+        Value* slowPathAddrOfThisStencil = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(ifi->GetModule(), CP_PLACEHOLDER_STENCIL_SLOW_PATH_ADDR, /*lower*/ -1, /*upper*/ -1);
+        Value* dataSecAddrOfThisStencil = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(ifi->GetModule(), CP_PLACEHOLDER_STENCIL_DATA_SEC_ADDR, /*lower*/ -1, /*upper*/ -1);
         Value* targetTV = ifi->CallDeegenCommonSnippet("BoxFunctionObjectToTValue", { functionObjectTarget }, icMissOrigin);
         ReleaseAssert(llvm_value_has_type<uint64_t>(targetTV));
 

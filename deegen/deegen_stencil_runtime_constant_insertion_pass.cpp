@@ -153,7 +153,9 @@ std::string WARN_UNUSED CPExprUnaryOp::PrintExprImpl(CpPlaceholderExprPrinter* p
     return varName;
 }
 
-llvm::GlobalVariable* WARN_UNUSED DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(llvm::Module* module, uint64_t ord)
+// the interval [lower, upper) is the interval given to absolute_symbol
+//
+llvm::GlobalVariable* WARN_UNUSED DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(llvm::Module* module, uint64_t ord, int64_t lower, int64_t upper)
 {
     using namespace llvm;
     LLVMContext& ctx = module->getContext();
@@ -170,8 +172,8 @@ llvm::GlobalVariable* WARN_UNUSED DeegenInsertOrGetCopyAndPatchPlaceholderSymbol
         gv->setAlignment(MaybeAlign(1));
         gv->setDSOLocal(true);
         auto *MD = MDNode::get(ctx, {
-            ValueAsMetadata::get(ConstantInt::getSigned(llvm_type_of<uint64_t>(ctx), -1)),
-            ValueAsMetadata::get(ConstantInt::getSigned(llvm_type_of<uint64_t>(ctx), -1))
+            ValueAsMetadata::get(ConstantInt::getSigned(llvm_type_of<uint64_t>(ctx), lower)),
+            ValueAsMetadata::get(ConstantInt::getSigned(llvm_type_of<uint64_t>(ctx), upper))
         });
         gv->setMetadata(LLVMContext::MD_absolute_symbol, MD);
     }
@@ -491,7 +493,7 @@ end:
 
             ReleaseAssert(rcList.count(rc));
             uint64_t ord = rcList[rc].ord;
-            GlobalVariable* gv = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(module, ord);
+            GlobalVariable* gv = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(module, ord, rc->m_bitWidth < 64 ? 0 : -1, rc->m_bitWidth < 64 ? (1 << rc->m_bitWidth) : -1);
 
             // 'gv' is the adjusted symbol. Now in LLVM IR, we need to undo the adjustment to get the original value back
             //
