@@ -67,7 +67,7 @@ git apply llvm.patch
 #
 mkdir build
 cd $LLVM_SRC_DIR/llvm-project/build
-CC=clang-12 CXX=clang++-12 cmake -GNinja -DLLVM_ENABLE_DUMP=ON -DLLVM_ENABLE_RTTI=ON -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_PROJECTS=clang -DLLVM_TARGETS_TO_BUILD=X86 ../llvm
+CC=clang-12 CXX=clang++-12 cmake -GNinja -DLLVM_ENABLE_DUMP=ON -DLLVM_ENABLE_RTTI=ON -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_PROJECTS=clang -DLLVM_TARGETS_TO_BUILD="X86;AArch64" ../llvm
 # Leave two CPUs idle so the system won't be irresponsible during the build
 #
 REQUIRES_RTTI=1 ninja -j$((`nproc`-2))

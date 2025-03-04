@@ -64,6 +64,72 @@ index 32a10ad41..32a049ef8 100644
        switch (MI.getOpcode()) {
        case TargetOpcode::CFI_INSTRUCTION:
          emitCFIInstruction(MI);
+diff --git a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp
+index 06e21f90e..11a1100ab 100644
+--- a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp
++++ b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp
+@@ -7142,6 +7142,48 @@ SDValue AArch64TargetLowering::getAddrLarge(NodeTy *N, SelectionDAG &DAG,
+       getTargetNode(N, Ty, DAG, AArch64II::MO_G0 | MO_NC | Flags));
+ }
+
++template <class NodeTy>
++SDValue AArch64TargetLowering::getAddrAbsolute(const GlobalValue* GV, NodeTy *N,
++                                               SelectionDAG &DAG,
++                                               unsigned Flags) const {
++  LLVM_DEBUG(dbgs() << "AArch64TargetLowering::getAddrAbsolute\n");
++  SDLoc DL(N);
++  EVT Ty = getPointerTy(DAG.getDataLayout());
++  ConstantRange CR = GV->getAbsoluteSymbolRange().value();
++  uint64_t Max = CR.getUnsignedMax().getZExtValue();
++  unsigned Width = 64 - (Max ? __builtin_clzll(Max) : 64);
++
++  SDValue Cur;
++  bool First = true;
++
++  auto BuildMov = [&](unsigned MovFlags, unsigned Shift) {
++    SDValue Granule = DAG.getTargetGlobalAddress(
++        GV, DL, Ty, 0, MovFlags | (First ? 0 : AArch64II::MO_NC) | Flags);
++    if (First) {
++      First = false;
++      return SDValue(DAG.getMachineNode(AArch64::MOVZXi, DL, Ty, Granule,
++                                        DAG.getTargetConstant(Shift, DL, MVT::i32)),
++                                        0);
++    } else {
++      return SDValue(DAG.getMachineNode(AArch64::MOVKXi, DL, Ty, Cur, Granule,
++                                        DAG.getTargetConstant(Shift, DL, MVT::i32)),
++                                         0);
++    }
++  };
++
++  if (48 < Width) {
++    Cur = BuildMov(AArch64II::MO_G3, 48);
++  }
++  if (32 < Width) {
++    Cur = BuildMov(AArch64II::MO_G2, 32);
++  }
++  if (16 < Width) {
++    Cur = BuildMov(AArch64II::MO_G1, 16);
++  }
++  return BuildMov(AArch64II::MO_G0, 0);
++}
++
++
+ // (addlow (adrp %hi(sym)) %lo(sym))
+ template <class NodeTy>
+ SDValue AArch64TargetLowering::getAddr(NodeTy *N, SelectionDAG &DAG,
+diff --git a/llvm/lib/Target/AArch64/AArch64ISelLowering.h b/llvm/lib/Target/AArch64/AArch64ISelLowering.h
+index ff3bfe897..3ec69a193 100644
+--- a/llvm/lib/Target/AArch64/AArch64ISelLowering.h
++++ b/llvm/lib/Target/AArch64/AArch64ISelLowering.h
+@@ -949,6 +949,8 @@ private:
+   template <class NodeTy>
+   SDValue getAddrLarge(NodeTy *N, SelectionDAG &DAG, unsigned Flags = 0) const;
+   template <class NodeTy>
++  SDValue getAddrAbsolute(const GlobalValue* GV, NodeTy *N, SelectionDAG &DAG, unsigned Flags = 0) const;
++  template <class NodeTy>
+   SDValue getAddr(NodeTy *N, SelectionDAG &DAG, unsigned Flags = 0) const;
+   template <class NodeTy>
+   SDValue getAddrTiny(NodeTy *N, SelectionDAG &DAG, unsigned Flags = 0) const;
 diff --git a/llvm/lib/Target/X86/X86CallingConv.td b/llvm/lib/Target/X86/X86CallingConv.td
 index 4dd8a6cdd..5a2c1fa5d 100644
 --- a/llvm/lib/Target/X86/X86CallingConv.td
