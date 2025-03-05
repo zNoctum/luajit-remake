@@ -79,10 +79,6 @@ SET(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} -no-pie ")
 # 
 SET(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -pthread ")
 
-# add -mfsgsbase, we will check support at runtime before actually using those instructions, so always having the flag is fine
-#
-SET(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -mfsgsbase ")
-
 # Assume BMI1 support. BMI1 is particularly useful for our boxing scheme
 # it should be fine to assume the CPU supports them as they have been released for 10 years
 #

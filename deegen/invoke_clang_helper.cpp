@@ -148,7 +148,7 @@ static std::string WARN_UNUSED CompileCppFileToObjectFileOrLLVMBitcodeImpl(const
         " -Wno-missing-prototypes -Wno-zero-length-array -Wno-reserved-identifier -Wno-disabled-macro-expansion "
         " -Wno-gnu-zero-variadic-macro-arguments -Wno-packed -Wno-overlength-strings -Wno-switch-enum -Werror "
         " -c -std=c++20 ")
-        + (arch == Arch::X86 ? "-target x86_64-unknown-linux-gnu -mfsgsbase -mbmi -msse4 " : "")
+        + (arch == Arch::X86 ? "-target x86_64-unknown-linux-gnu -mbmi -msse4 " : "")
         + (arch == Arch::AArch64 ? "-target aarch64-unknown-linux-gnu " : "")
         + (compileToLLVMIR ? " -emit-llvm " : "")
         + " -o " + resFilePath + " "

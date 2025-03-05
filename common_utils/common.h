@@ -11,7 +11,6 @@
 #include <cstring>
 #include <cassert>
 #include <queue>
-#include <x86intrin.h>
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -21,7 +20,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <immintrin.h>
 #include <thread>
 #include <functional>
 #include <stdarg.h>
