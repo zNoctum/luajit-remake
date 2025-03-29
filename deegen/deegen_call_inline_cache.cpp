@@ -28,6 +28,16 @@ void DeegenCallIcLogicCreator::EmitGenericGetCallTargetLogic(DeegenBytecodeImplC
 
     calleeCb = ExtractValueInst::Create(codeBlockAndEntryPoint, { 0 /*idx*/ }, "", insertBefore);
     codePointer = ExtractValueInst::Create(codeBlockAndEntryPoint, { 1 /*idx*/ }, "", insertBefore);
+
+    LLVMContext &ctx = functionObject->getContext();
+
+    // we need to do this because llvm changes the internal representation of the return type for reasons, WHY?????
+    //
+    if (llvm_value_has_type<uint64_t>(calleeCb))
+        calleeCb = new IntToPtrInst(calleeCb, llvm_type_of<void*>(ctx), "", insertBefore);
+    if (llvm_value_has_type<uint64_t>(codePointer))
+        codePointer = new IntToPtrInst(codePointer, llvm_type_of<void*>(ctx), "", insertBefore);
+
     ReleaseAssert(llvm_value_has_type<void*>(calleeCb));
     ReleaseAssert(llvm_value_has_type<void*>(codePointer));
 }
@@ -487,11 +497,11 @@ static void InsertBaselineJitCallIcMagicAsmForDirectCall(llvm::Module* module,
     //
     // Therefore, we must teach LLVM that the direct-call check may directly branch to IC slow path by putting it in the GOTO list as well.
     //
-    std::string asmText = "movabsq $2, $0;cmpq $0, $1;jne ${3:l};jne ${4:l};";
+    std::string asmText = "movz $0, #:abs_g3:$2;movk $0, #:abs_g2_nc:$2; movk $0, #:abs_g1_nc:$2; movk $0, #:abs_g0_nc:$2;cmp $1, $0;bne ${3:l};bne ${4:l};";
     std::string constraintText = "=&r,r,i,!i,!i,~{cc},~{dirflag},~{fpsr},~{flags}";
 
-    ReleaseAssert(unique_ord <= 1000000000);
-    asmText = "movl $$" + std::to_string(unique_ord) + ", eax;" + asmText;
+    ReleaseAssert(unique_ord <= 0xFFFF);
+    asmText = "mov x0, #" + std::to_string(unique_ord) + ";" + asmText;
 
     asmText = MagicAsm::WrapLLVMAsmPayload(asmText, MagicAsmKind::CallIcDirectCall);
 
@@ -543,11 +553,11 @@ static void InsertBaselineJitCallIcMagicAsmForClosureCall(llvm::Module* module,
     //
     // args: [i32 cb32, ptr cached_cb32] returns: void
     //
-    std::string asmText = "cmpl $1, $0;jne ${2:l};";
-    std::string constraintText = "r,i,!i,~{cc},~{dirflag},~{fpsr},~{flags}";
+    std::string asmText = "movz x1, #:abs_g1:$1; movk x1, #:abs_g0_nc:$1;cmp $0, x1;bne ${2:l};";
+    std::string constraintText = "r,i,!i,~{cc},~{dirflag},~{fpsr},~{flags},~{x1}";
 
     ReleaseAssert(unique_ord <= 1000000000);
-    asmText = "movl $$" + std::to_string(unique_ord) + ", eax;" + asmText;
+    asmText = "mov x0, #" + std::to_string(unique_ord) + ";" + asmText;
 
     asmText = MagicAsm::WrapLLVMAsmPayload(asmText, MagicAsmKind::CallIcClosureCall);
 
@@ -1107,35 +1117,35 @@ std::vector<DeegenCallIcLogicCreator::BaselineJitAsmTransformResult> WARN_UNUSED
         ReleaseAssert(dcBlock->m_lines[lineOrd].IsMagicInstructionOfKind(MagicAsmKind::CallIcDirectCall));
         AsmMagicPayload* dcPayload = dcBlock->m_lines[lineOrd].m_magicPayload;
         // The DirectCall IC magic has the following payload:
-        //     movl $uniq_id, eax
+        //     mov x0, $uniq_id
         //     movabsq $cached_val, someReg
         //     cmp someReg, tv
         //     jne closure_call_ic_entry
         //     jne dc_ic_miss_slowpath
         //
-        ReleaseAssert(dcPayload->m_lines.size() == 5);
+        ReleaseAssert(dcPayload->m_lines.size() == 8);
 
-        // Decode the movl $uniq_id, eax line to get uniq_id
+        // Decode the mov x0, $uniq_id line to get uniq_id
         //
         auto getIdFromMagicPayloadLine = [&](X64AsmLine& line) WARN_UNUSED -> uint64_t
         {
-            ReleaseAssert(line.NumWords() == 3 && line.GetWord(0) == "movl" && line.GetWord(2) == "eax");
-            std::string s = line.GetWord(1);
-            ReleaseAssert(s.starts_with("$") && s.ends_with(","));
-            int val = StoiOrFail(s.substr(1, s.length() - 2));
+            ReleaseAssert(line.NumWords() == 3 && line.GetWord(0).starts_with("mov") && line.GetWord(1).starts_with("x"));
+            std::string s = line.GetWord(2);
+            ReleaseAssert(s.starts_with("#"));
+            int val = StoiOrFail(s.substr(1, s.length() - 1));
             ReleaseAssert(val >= 0);
             return static_cast<uint64_t>(val);
         };
 
         uint64_t icUniqueOrd = getIdFromMagicPayloadLine(dcPayload->m_lines[0]);
 
-        ReleaseAssert(dcPayload->m_lines[3].IsConditionalJumpInst());
-        std::string ccBlockLabel = dcPayload->m_lines[3].GetWord(1);
+        ReleaseAssert(dcPayload->m_lines[6].IsConditionalJumpInst());
+        std::string ccBlockLabel = dcPayload->m_lines[6].GetWord(1);
         ReleaseAssert(file->m_labelNormalizer.QueryLabelExists(ccBlockLabel));
         ccBlockLabel = file->m_labelNormalizer.GetNormalizedLabel(ccBlockLabel);
 
-        ReleaseAssert(dcPayload->m_lines[4].IsConditionalJumpInst());
-        std::string dcIcMissSlowPathLabel = dcPayload->m_lines[4].GetWord(1);
+        ReleaseAssert(dcPayload->m_lines[7].IsConditionalJumpInst());
+        std::string dcIcMissSlowPathLabel = dcPayload->m_lines[7].GetWord(1);
         dcIcMissSlowPathLabel = file->m_labelNormalizer.GetNormalizedLabel(dcIcMissSlowPathLabel);
 
         X64AsmBlock* ccBlock = nullptr;
@@ -1172,11 +1182,11 @@ std::vector<DeegenCallIcLogicCreator::BaselineJitAsmTransformResult> WARN_UNUSED
         //     cmp $cached_val, hidden_class
         //     jne cc_ic_miss_slowpath
         //
-        ReleaseAssert(ccPayload->m_lines.size() == 3);
+        ReleaseAssert(ccPayload->m_lines.size() == 5);
         ReleaseAssert(getIdFromMagicPayloadLine(ccPayload->m_lines[0]) == icUniqueOrd);
 
-        ReleaseAssert(ccPayload->m_lines[2].IsConditionalJumpInst());
-        std::string ccIcMissSlowPathLabel = ccPayload->m_lines[2].GetWord(1);
+        ReleaseAssert(ccPayload->m_lines[4].IsConditionalJumpInst());
+        std::string ccIcMissSlowPathLabel = ccPayload->m_lines[4].GetWord(1);
         ReleaseAssert(file->m_labelNormalizer.QueryLabelExists(ccIcMissSlowPathLabel));
         ccIcMissSlowPathLabel = file->m_labelNormalizer.GetNormalizedLabel(ccIcMissSlowPathLabel);
 
@@ -1209,6 +1219,9 @@ std::vector<DeegenCallIcLogicCreator::BaselineJitAsmTransformResult> WARN_UNUSED
             newList.push_back(dcPayload->m_lines[1]);
             newList.push_back(dcPayload->m_lines[2]);
             newList.push_back(dcPayload->m_lines[3]);
+            newList.push_back(dcPayload->m_lines[4]);
+            newList.push_back(dcPayload->m_lines[5]);
+            newList.push_back(dcPayload->m_lines[6]);
             ReleaseAssert(newList.back().IsConditionalJumpInst());
             newList.back().GetWord(1) = "__deegen_cp_placeholder_" + std::to_string(CP_PLACEHOLDER_IC_MISS_DEST);
 
@@ -1240,6 +1253,8 @@ std::vector<DeegenCallIcLogicCreator::BaselineJitAsmTransformResult> WARN_UNUSED
             std::vector<X64AsmLine> newList;
             newList.push_back(ccPayload->m_lines[1]);
             newList.push_back(ccPayload->m_lines[2]);
+            newList.push_back(ccPayload->m_lines[3]);
+            newList.push_back(ccPayload->m_lines[4]);
             ReleaseAssert(newList.back().IsConditionalJumpInst());
             newList.back().GetWord(1) = "__deegen_cp_placeholder_" + std::to_string(CP_PLACEHOLDER_IC_MISS_DEST);
 
@@ -1290,8 +1305,8 @@ std::vector<DeegenCallIcLogicCreator::BaselineJitAsmTransformResult> WARN_UNUSED
             ReleaseAssert(termJmp.IsDirectUnconditionalJumpInst() && termJmp.GetWord(1) == ccEntry->m_normalizedLabelName);
             termJmp.GetWord(1) = "__deegen_fake_jmp_dest";
 
-            smc->m_lines.push_back(X64AsmLine::Parse("\tjp\t" + ccIcMissSlowPathLabel));
-            smc->m_lines.push_back(X64AsmLine::Parse("\tjp\t" + dcIcMissSlowPathLabel));
+            smc->m_lines.push_back(X64AsmLine::Parse("\tb.vs\t" + ccIcMissSlowPathLabel));
+            smc->m_lines.push_back(X64AsmLine::Parse("\tb.vs\t" + dcIcMissSlowPathLabel));
             smc->m_lines.push_back(termJmp);
 
             ReleaseAssert(smc->m_endsWithJmpToLocalLabel);
@@ -1407,12 +1422,12 @@ void DeegenCallIcLogicCreator::BaselineJitAsmTransformResult::FixupSMCRegionAfte
     block->m_lines.pop_back();
 
     ReleaseAssert(block->m_lines.back().NumWords() == 2 &&
-                  block->m_lines.back().GetWord(0) == "jp" &&
+                  block->m_lines.back().GetWord(0) == "b.vs" &&
                   block->m_lines.back().GetWord(1) == m_labelForDcIcMissLogic);
     block->m_lines.pop_back();
 
     ReleaseAssert(block->m_lines.back().NumWords() == 2 &&
-                  block->m_lines.back().GetWord(0) == "jp" &&
+                  block->m_lines.back().GetWord(0) == "b.vs" &&
                   block->m_lines.back().GetWord(1) == m_labelForCcIcMissLogic);
     block->m_lines.pop_back();
 
@@ -2071,11 +2086,14 @@ static void SetupCallIcSmcRegionInitialInstructions(DeegenStencil& mainLogicSten
                                                     size_t dcIcMissDestOffsetInSlowPath)
 {
     {
-        ReleaseAssert(smcRegionSize >= 5);
+        ReleaseAssert(smcRegionSize >= 4);
         std::vector<uint8_t> byteSeq;
         byteSeq.resize(smcRegionSize, 0);
-        byteSeq[0] = 0xe9;  // jmp
-        FillAddressRangeWithX64MultiByteNOPs(byteSeq.data() + 5, byteSeq.size() - 5);
+        byteSeq[0] = 0x04;  // b instruction
+        byteSeq[1] = 0x00;
+        byteSeq[2] = 0x00;
+        byteSeq[3] = 0x00;
+        FillAddressRangeWithX64MultiByteNOPs(byteSeq.data() + 4, byteSeq.size() - 4);
 
         for (size_t i = 0; i < smcRegionSize; i++)
         {
@@ -2098,9 +2116,9 @@ static void SetupCallIcSmcRegionInitialInstructions(DeegenStencil& mainLogicSten
 
     {
         RelocationRecord rr;
-        rr.m_relocationType = llvm::ELF::R_X86_64_PC32;
+        rr.m_relocationType = llvm::ELF::R_AARCH64_JUMP26;
         rr.m_symKind = RelocationRecord::SymKind::SlowPathAddr;
-        rr.m_offset = smcRegionOffset + 1;
+        rr.m_offset = smcRegionOffset;
         // SlowPathAddr + dcIcMissDestOffsetInSlowPath - PC - 4
         //
         rr.m_addend = static_cast<int64_t>(dcIcMissDestOffsetInSlowPath - 4);
@@ -2306,6 +2324,14 @@ DeegenCallIcLogicCreator::BaselineJitCodegenResult WARN_UNUSED DeegenCallIcLogic
 
         Value* calleeCb = ExtractValueInst::Create(codeBlockAndEntryPoint, { 0 /*idx*/ }, "", skipIcCreationBB);
         Value* codePointer = ExtractValueInst::Create(codeBlockAndEntryPoint, { 1 /*idx*/ }, "", skipIcCreationBB);
+
+        // we need to do this because llvm changes the internal representation of the return type for reasons, WHY?????
+        //
+        if (llvm_value_has_type<uint64_t>(calleeCb))
+            calleeCb = new IntToPtrInst(calleeCb, llvm_type_of<void*>(ctx), "", skipIcCreationBB);
+        if (llvm_value_has_type<uint64_t>(codePointer))
+            codePointer = new IntToPtrInst(codePointer, llvm_type_of<void*>(ctx), "", skipIcCreationBB);
+
         ReleaseAssert(llvm_value_has_type<void*>(calleeCb));
         ReleaseAssert(llvm_value_has_type<void*>(codePointer));
 
@@ -2431,6 +2457,15 @@ DeegenCallIcLogicCreator::BaselineJitCodegenResult WARN_UNUSED DeegenCallIcLogic
 
         Value* calleeCb = ExtractValueInst::Create(codeBlockAndEntryPoint, { 0 /*idx*/ }, "", insertIcDcModeBB);
         Value* codePointer = ExtractValueInst::Create(codeBlockAndEntryPoint, { 1 /*idx*/ }, "", insertIcDcModeBB);
+
+        // we need to do this because llvm changes the internal representation of the return type for reasons, WHY?????
+        //
+        if (llvm_value_has_type<uint64_t>(calleeCb))
+            calleeCb = new IntToPtrInst(calleeCb, llvm_type_of<void*>(ctx), "", insertIcDcModeBB);
+        if (llvm_value_has_type<uint64_t>(codePointer))
+            codePointer = new IntToPtrInst(codePointer, llvm_type_of<void*>(ctx), "", insertIcDcModeBB);
+
+
         ReleaseAssert(llvm_value_has_type<void*>(calleeCb));
         ReleaseAssert(llvm_value_has_type<void*>(codePointer));
 
@@ -2537,6 +2572,15 @@ DeegenCallIcLogicCreator::BaselineJitCodegenResult WARN_UNUSED DeegenCallIcLogic
 
         Value* calleeCb = ExtractValueInst::Create(codeBlockAndEntryPoint, { 0 /*idx*/ }, "", insertIcCcModeBB);
         Value* codePointer = ExtractValueInst::Create(codeBlockAndEntryPoint, { 1 /*idx*/ }, "", insertIcCcModeBB);
+
+        // we need to do this because llvm changes the internal representation of the return type for reasons, WHY?????
+        //
+        if (llvm_value_has_type<uint64_t>(calleeCb))
+            calleeCb = new IntToPtrInst(calleeCb, llvm_type_of<void*>(ctx), "", insertIcCcModeBB);
+        if (llvm_value_has_type<uint64_t>(codePointer))
+            codePointer = new IntToPtrInst(codePointer, llvm_type_of<void*>(ctx), "", insertIcCcModeBB);
+
+
         ReleaseAssert(llvm_value_has_type<void*>(calleeCb));
         ReleaseAssert(llvm_value_has_type<void*>(codePointer));
 

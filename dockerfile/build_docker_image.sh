@@ -4,44 +4,17 @@ set -e
 
 cd /
 
-# install misc dependency
-#
-apt update
-apt install -y git wget tar xz-utils sudo make ninja-build python ccache libtinfo-dev libz-dev lsb-release software-properties-common gnupg libstdc++-10-dev binutils-gold
-
-# install cmake 
-#
-cd /opt
-wget -O install_cmake.sh https://github.com/Kitware/CMake/releases/download/v3.23.0/cmake-3.23.0-linux-x86_64.sh
-mkdir -p cmake-3.23.0 && bash install_cmake.sh --skip-license --prefix=/opt/cmake-3.23.0
-ln -s /opt/cmake-3.23.0/bin/* /usr/local/bin
-rm -f install_cmake.sh
-
 # We have a simple patch to workaround a bug (or feature?) in LLVM's PreserveMost calling convention, 
 # and to extend LLVM's GHC calling convention to allow passing more arguments.
 #
 # This unfortunately means that we have to build Clang+LLVM from source (we need to build
 # Clang from source as well, since we have C++ code that uses PreserveMost calling convention)
 #
-# Install clang-12, which will be used to build Clang+LLVM from source
-# Note that thanks to clang-12 is not the default Clang version on Ubuntu, all the executable files are suffixed
-# (e.g., the Clang executable is clang-12, not clang). This is a good thing for us since it happens to also 
+# Install clang-14, which will be used to build Clang+LLVM from source
+# Note that thanks to clang-14 is not the default Clang version on Ubuntu, all the executable files are suffixed
+# (e.g., the Clang executable is clang-14, not clang). This is a good thing for us since it happens to also
 # prevent name collision between the system version and our build-from-source version.
 #
-apt install -y clang-12
-
-# For now, do not use mold because it seems to have a bug when program is compiled with no-pie that causes dlsym() to crash
-#
-# install mold
-#
-#cd /usr/local/
-#wget -O mold.tar.gz https://github.com/rui314/mold/releases/download/v1.4.0/mold-1.4.0-x86_64-linux.tar.gz
-#tar xf mold.tar.gz --strip-components=1
-#rm -f mold.tar.gz
-
-update-alternatives --install /usr/bin/ld ld /usr/bin/ld.gold 120
-#update-alternatives --install /usr/bin/ld ld /usr/local/bin/mold 100
-update-alternatives --install /usr/bin/ld ld /usr/bin/x86_64-linux-gnu-ld 90
 
 # Checkout LLVM 15.0.3
 #
@@ -67,7 +40,8 @@ git apply llvm.patch
 #
 mkdir build
 cd $LLVM_SRC_DIR/llvm-project/build
-CC=clang-12 CXX=clang++-12 cmake -GNinja -DLLVM_ENABLE_DUMP=ON -DLLVM_ENABLE_RTTI=ON -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_PROJECTS=clang -DLLVM_TARGETS_TO_BUILD="X86;AArch64" ../llvm
+CC=clang-14 CXX=clang++-14 cmake -GNinja -DLLVM_ENABLE_DUMP=ON -DLLVM_ENABLE_RTTI=ON -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_PROJECTS="clang;compiler-rt" -DLLVM_TARGETS_TO_BUILD="X86;AArch64" ../llvm
+
 # Leave two CPUs idle so the system won't be irresponsible during the build
 #
 REQUIRES_RTTI=1 ninja -j$((`nproc`-2))
@@ -75,13 +49,13 @@ REQUIRES_RTTI=1 ninja install
 
 # Having built Clang+LLVM, we can now uninstall the system Clang compiler
 #
-apt remove -y clang-12
+apt remove -y clang-14
 apt autoremove -y
 
 # It seems like after uninstalling the system Clang, the ld link is broken.. fix it
 #
 #update-alternatives --install /usr/bin/ld ld /usr/local/bin/mold 100
-update-alternatives --install /usr/bin/ld ld /usr/bin/ld.gold 120
+update-alternatives --install /usr/bin/ld ld /usr/bin/lld 120
 
 # Remove the Clang/LLVM build directory
 #
@@ -90,9 +64,7 @@ rm -rf $LLVM_SRC_DIR
 
 # set user
 #
+userdel -r ubuntu
 useradd -ms /bin/bash u
 usermod -aG sudo u
 echo 'u ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
-
-mv /ccache.conf /etc/ccache.conf
-

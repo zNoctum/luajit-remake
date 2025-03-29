@@ -69,7 +69,7 @@ struct X64AsmLine
     //
     bool WARN_UNUSED IsMagicInstruction()
     {
-        return NumWords() == 1 && GetWord(0) == "hlt";
+        return NumWords() == 2 && GetWord(0) == "hlt";
     }
 
     bool WARN_UNUSED IsMagicInstructionOfKind(MagicAsmKind kind);
@@ -84,13 +84,13 @@ struct X64AsmLine
     bool WARN_UNUSED IsIndirectJumpInst()
     {
         if (!IsInstruction()) { return false; }
-        return GetWord(0) == "jmpq";
+        return GetWord(0) == "br";
     }
 
     bool WARN_UNUSED IsDirectUnconditionalJumpInst()
     {
         if (!IsInstruction()) { return false; }
-        bool res = (GetWord(0) == "jmp");
+        bool res = (GetWord(0) == "b");
         ReleaseAssertImp(res, NumWords() == 2);
         return res;
     }
@@ -99,22 +99,23 @@ struct X64AsmLine
     {
         if (!IsInstruction()) { return false; }
         std::string& opcode = GetWord(0);
-        if (opcode == "jmp" || opcode == "jmpq") { return false; }
-        return opcode.starts_with("j");         // hopefully this is good enough..
+        if (opcode == "br" || opcode == "b" || opcode == "bl" || opcode == "blr") { return false; }
+        // hopefully this is good enough..
+        return opcode.starts_with("b.") || opcode == "cbnz" || opcode == "cbz" || opcode == "tbnz" || opcode == "tbz";
     }
 
     void FlipConditionalJumpCondition()
     {
         ReleaseAssert(IsConditionalJumpInst());
         std::string& opcode = GetWord(0);
-        ReleaseAssert(opcode.starts_with("j"));
-        if (opcode.starts_with("jn"))
+        ReleaseAssert(opcode.starts_with("b."));
+        if (opcode.starts_with("b.n"))
         {
-            opcode = "j" + opcode.substr(2);
+            opcode = "b." + opcode.substr(2);
         }
         else
         {
-            opcode = "jn" + opcode.substr(1);
+            opcode = "b.n" + opcode.substr(1);
         }
     }
 
@@ -125,7 +126,7 @@ struct X64AsmLine
         // For now... If this function return 'false' while the instruction is actually a barrier,
         // it is only a perf issue (we would emit an unnecessary jump), not a correctness issue.
         //
-        return (opcode == "jmp" || opcode == "jmpq" || opcode == "ud2" || opcode == "ret");
+        return (opcode == "b" || opcode == "br" || opcode == "brk" || opcode == "ret");
     }
 
     bool WARN_UNUSED IsDirective()
@@ -170,11 +171,9 @@ struct X64AsmLine
 // Describes an ASM magic
 //
 // All ASM magic are required to have the following pattern:
-//     hlt
-//     int $XXX   # XXX := 100 + magicKind
+//     hlt #XXX   ; XXX := 100 + magicKind
 //     <opaque instruction sequence>
-//     int $XXX
-//     hlt
+//     hlt #XXX
 //
 // This allows us to reliably identify the pattern from the assembly code.
 // The pattern is then transformed to a single 'hlt' AsmLine carrying a MagicPayload <magicKind, opaqueInstSequence>

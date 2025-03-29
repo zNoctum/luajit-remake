@@ -85,13 +85,22 @@ std::unique_ptr<llvm::Module> WARN_UNUSED DeegenFunctionEntryLogicCreator::Gener
         // Set up the function implementation, which should call the baseline JIT codegen function and branch to JIT'ed code
         //
         Value* bcbAndCodePointer = CreateCallToDeegenCommonSnippet(module.get(), "TierUpIntoBaselineJit", { calleeCodeBlock }, entryBB);
-        ReleaseAssert(bcbAndCodePointer->getType()->isStructTy());
-        StructType* sty = dyn_cast<StructType>(bcbAndCodePointer->getType());
-        ReleaseAssert(sty->elements().size() == 2);
+
+        ReleaseAssert(bcbAndCodePointer->getType()->isStructTy() || bcbAndCodePointer->getType()->isAggregateType());
+
         Value* bcb = ExtractValueInst::Create(bcbAndCodePointer, { 0 /*idx*/ }, "", entryBB);
-        ReleaseAssert(llvm_value_has_type<void*>(bcb));
         Value* codePointer = ExtractValueInst::Create(bcbAndCodePointer, { 1 /*idx*/ }, "", entryBB);
+
+        // This is again because LLVM decides to have differing behavior depending on target. still WHY?????
+        //
+        if (llvm_value_has_type<uint64_t>(bcb))
+            bcb = new IntToPtrInst(bcb, llvm_type_of<void*>(ctx), "", entryBB);
+        if (llvm_value_has_type<uint64_t>(codePointer))
+            codePointer = new IntToPtrInst(codePointer, llvm_type_of<void*>(ctx), "", entryBB);
+
+
         ReleaseAssert(llvm_value_has_type<void*>(codePointer));
+        ReleaseAssert(llvm_value_has_type<void*>(bcb));
 
         UnreachableInst* dummyInst = new UnreachableInst(ctx, entryBB);
 
@@ -123,12 +132,20 @@ std::unique_ptr<llvm::Module> WARN_UNUSED DeegenFunctionEntryLogicCreator::Gener
         BasicBlock* entryBB = BasicBlock::Create(ctx, "", func);
 
         Value* bcbAndCodePointer = CreateCallToDeegenCommonSnippet(module.get(), "OsrEntryIntoBaselineJit", { codeBlock, curBytecode }, entryBB);
-        ReleaseAssert(bcbAndCodePointer->getType()->isStructTy());
-        StructType* sty = dyn_cast<StructType>(bcbAndCodePointer->getType());
-        ReleaseAssert(sty->elements().size() == 2);
+        ReleaseAssert(bcbAndCodePointer->getType()->isStructTy() || bcbAndCodePointer->getType()->isAggregateType());
+        if (bcbAndCodePointer->getType()->isStructTy()) {
+            StructType *sty = dyn_cast<StructType>(bcbAndCodePointer->getType());
+            ReleaseAssert(sty->elements().size() == 2);
+        }
         Value* bcb = ExtractValueInst::Create(bcbAndCodePointer, { 0 /*idx*/ }, "", entryBB);
-        ReleaseAssert(llvm_value_has_type<void*>(bcb));
         Value* codePointer = ExtractValueInst::Create(bcbAndCodePointer, { 1 /*idx*/ }, "", entryBB);
+
+        if (llvm_value_has_type<uint64_t>(bcb))
+            bcb = new IntToPtrInst(bcb, llvm_type_of<void*>(ctx), "", entryBB);
+        if (llvm_value_has_type<uint64_t>(codePointer))
+            codePointer = new IntToPtrInst(codePointer, llvm_type_of<void*>(ctx), "", entryBB);
+
+        ReleaseAssert(llvm_value_has_type<void*>(bcb));
         ReleaseAssert(llvm_value_has_type<void*>(codePointer));
 
         UnreachableInst* dummyInst = new UnreachableInst(ctx, entryBB);

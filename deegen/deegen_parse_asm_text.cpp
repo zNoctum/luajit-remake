@@ -163,7 +163,7 @@ X64AsmLine WARN_UNUSED X64AsmLine::Parse(std::string line)
     }
 
     {
-        size_t commentStart = line.find("#");
+        size_t commentStart = line.find("//");
         if (commentStart != std::string::npos)
         {
             res.m_trailingComments = line.substr(commentStart);
@@ -244,7 +244,7 @@ void X64AsmBlock::SplitAtLine(X64AsmFile* owner, size_t line, X64AsmBlock*& part
     {
         p1->m_lines.push_back(m_lines[i]);
     }
-    p1->m_lines.push_back(X64AsmLine::Parse("\tjmp\t" + p1->m_terminalJmpTargetLabel));
+    p1->m_lines.push_back(X64AsmLine::Parse("\tb\t" + p1->m_terminalJmpTargetLabel));
 
     std::unique_ptr<X64AsmBlock> p2 = std::make_unique<X64AsmBlock>();
     p2->m_prefixText = uniqLabel + ":\n";
@@ -524,7 +524,7 @@ std::unique_ptr<X64AsmFile> WARN_UNUSED X64AsmFile::ParseFile(std::string fileCo
                 std::string targetLabel = r->m_blocks[i + 1]->m_normalizedLabelName;
                 block->m_endsWithJmpToLocalLabel = true;
                 block->m_terminalJmpTargetLabel = targetLabel;
-                block->m_lines.push_back(X64AsmLine::Parse("\tjmp\t" + targetLabel));
+                block->m_lines.push_back(X64AsmLine::Parse("\tb\t" + targetLabel));
             }
             else
             {
@@ -664,24 +664,24 @@ std::unique_ptr<X64AsmFile> WARN_UNUSED X64AsmFile::ParseFile(std::string fileCo
     {
         std::vector<X64AsmLine> list;
         {
-            auto checkIsIntInst = [&](X64AsmLine& asmLine) WARN_UNUSED -> bool
+            auto checkIsHltInst = [&](X64AsmLine& asmLine) WARN_UNUSED -> bool
             {
                 ReleaseAssert(asmLine.IsInstruction());
                 if (asmLine.NumWords() != 2) { return false; }
-                if (asmLine.GetWord(0) != "int") { return false; }
-                ReleaseAssert(asmLine.GetWord(1).starts_with("$"));
+                if (asmLine.GetWord(0) != "hlt") { return false; }
+                ReleaseAssert(asmLine.GetWord(1).starts_with("#"));
                 return true;
             };
 
             auto getIntInstOpVal = [&](X64AsmLine& asmLine) WARN_UNUSED -> uint32_t
             {
-                ReleaseAssert(checkIsIntInst(asmLine));
+                ReleaseAssert(checkIsHltInst(asmLine));
                 ReleaseAssert(asmLine.NumWords() == 2);
                 std::string strVal = asmLine.GetWord(1).substr(1);
                 int val = -1;
                 try
                 {
-                    val = std::stoi(strVal);
+                    val = std::stoi(strVal, nullptr, 0);
                 }
                 catch (...)
                 {
@@ -703,19 +703,16 @@ std::unique_ptr<X64AsmFile> WARN_UNUSED X64AsmFile::ParseFile(std::string fileCo
                 else
                 {
                     ReleaseAssert(i + 1 < block->m_lines.size());
-                    ReleaseAssert(checkIsIntInst(block->m_lines[i + 1]));
-                    uint32_t intInstOpval = getIntInstOpVal(block->m_lines[i + 1]);
+                    uint32_t intInstOpval = getIntInstOpVal(block->m_lines[i]);
                     AsmMagicPayload* payload = new AsmMagicPayload();
                     ReleaseAssert(100 <= intInstOpval && intInstOpval < 100 + static_cast<uint32_t>(MagicAsmKind::X_END_OF_ENUM));
                     payload->m_kind = static_cast<MagicAsmKind>(intInstOpval - 100);
 
-                    ReleaseAssert(block->m_lines[i + 1].m_prefixingText == "");
-
-                    size_t payloadEnd = i + 2;
+                    size_t payloadEnd = i + 1;
                     while (true)
                     {
                         ReleaseAssert(payloadEnd < block->m_lines.size());
-                        if (checkIsIntInst(block->m_lines[payloadEnd]))
+                        if (checkIsHltInst(block->m_lines[payloadEnd]))
                         {
                             ReleaseAssert(getIntInstOpVal(block->m_lines[payloadEnd]) == intInstOpval);
                             break;
@@ -723,23 +720,21 @@ std::unique_ptr<X64AsmFile> WARN_UNUSED X64AsmFile::ParseFile(std::string fileCo
                         payloadEnd++;
                     }
 
-                    // [i+2, payloadEnd) is the range of the asm payload
+                    // [i+1, payloadEnd) is the range of the asm payload
                     //
-                    for (size_t k = i + 2; k < payloadEnd; k++)
+                    for (size_t k = i + 1; k < payloadEnd; k++)
                     {
                         payload->m_lines.push_back(block->m_lines[k]);
                     }
 
                     ReleaseAssert(block->m_lines[payloadEnd].m_prefixingText == "");
                     ReleaseAssert(payloadEnd + 1 < block->m_lines.size());
-                    ReleaseAssert(block->m_lines[payloadEnd + 1].IsMagicInstruction());
-                    ReleaseAssert(block->m_lines[payloadEnd + 1].m_prefixingText == "");
 
                     list.push_back(block->m_lines[i]);
                     ReleaseAssert(list.back().m_magicPayload == nullptr);
                     list.back().m_magicPayload = payload;
 
-                    i = payloadEnd + 2;
+                    i = payloadEnd + 1;
                 }
             }
             ReleaseAssert(i == block->m_lines.size());
@@ -911,7 +906,7 @@ X64AsmBlock* WARN_UNUSED X64AsmBlock::Create(X64AsmFile* owner, X64AsmBlock* jmp
     res->m_prefixText = res->m_normalizedLabelName + ":\n";
     res->m_endsWithJmpToLocalLabel = true;
     res->m_terminalJmpTargetLabel = jmpDst->m_normalizedLabelName;
-    res->m_lines.push_back(X64AsmLine::Parse("\tjmp\t" + jmpDst->m_normalizedLabelName));
+    res->m_lines.push_back(X64AsmLine::Parse("\tb\t" + jmpDst->m_normalizedLabelName));
     owner->m_blockHolders.push_back(std::move(holder));
     return res;
 }
@@ -1090,6 +1085,9 @@ void X64AsmFile::Validate()
             }
             for (size_t k = 0; k + 1 < block->m_lines.size(); k++)
             {
+                if (block->m_lines[k].IsDefinitelyBarrierInst())
+                    for (size_t l = 0; l < block->m_lines.size(); l++)
+                        std::cout << block->m_lines[l].ToString() << std::endl;
                 ReleaseAssert(!block->m_lines[k].IsDefinitelyBarrierInst());
             }
             ReleaseAssert(block->m_lines.back().IsDefinitelyBarrierInst());

@@ -42,5 +42,5 @@ endforeach()
 add_library(deegen_user_builtin_lib
   ${generated_src_list}
 )
-set_target_properties(deegen_user_builtin_lib PROPERTIES COMPILE_FLAGS " -O3 ")
+set_target_properties(deegen_user_builtin_lib PROPERTIES COMPILE_FLAGS " -O3 -target aarch64-unkown-linux-gnu ")
 

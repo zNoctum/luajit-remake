@@ -1,5 +1,6 @@
 #include "runtime_utils.h"
 #include "lj_parser_wrapper.h"
+#include "vm.h"
 
 #define LJR_VERSION_MAJOR_NUMBER 0
 #define LJR_VERSION_MINOR_NUMBER 0
@@ -26,6 +27,8 @@ static void LaunchScript(int argc, char** argv)
 {
     assert(argc >= 2);
     VM* vm = VM::Create();
+    vm->SetEngineStartingTier(VM::EngineStartingTier::Interpreter);
+    vm->SetEngineMaxTier(VM::EngineMaxTier::Interpreter);
 
     // According to Lua Standard:
     //     Before starting to run the script, lua collects all arguments in the command line in a global table called arg.

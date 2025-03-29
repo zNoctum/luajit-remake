@@ -327,6 +327,14 @@ void DeegenLibLowerInPlaceCallAPIs(DeegenLibFuncInstance* ifi, llvm::Function* f
 
         Value* calleeCb = ExtractValueInst::Create(codeBlockAndEntryPoint, { 0 /*idx*/ }, "", callInst /*insertBefore*/);
         Value* codePointer = ExtractValueInst::Create(codeBlockAndEntryPoint, { 1 /*idx*/ }, "", callInst /*insertBefore*/);
+
+        // we need to do this because llvm changes the internal representation of the return type for reasons, WHY?????
+        //
+        if (llvm_value_has_type<uint64_t>(calleeCb))
+            calleeCb = new IntToPtrInst(calleeCb, llvm_type_of<void*>(ctx), "", callInst);
+        if (llvm_value_has_type<uint64_t>(codePointer))
+            codePointer = new IntToPtrInst(codePointer, llvm_type_of<void*>(ctx), "", callInst);
+
         ReleaseAssert(llvm_value_has_type<void*>(codePointer));
 
         InterpreterFunctionInterface::CreateDispatchToCallee(

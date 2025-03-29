@@ -122,7 +122,7 @@ def UpdateImageAndDie():
         print('[ERROR] Dockerfile not found!')
         sys.exit(1)
         
-    cmd = 'docker build --tag %s:%s %s' % (docker_image_name, docker_image_tag, docker_dir)
+    cmd = 'docker buildx build --tag %s:%s %s' % (docker_image_name, docker_image_tag, docker_dir)
     r = os.system(cmd)
     if (r != 0):
         print('[ERROR] Failed to build docker image, exit code = %d' % r)

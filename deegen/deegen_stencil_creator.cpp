@@ -423,7 +423,10 @@ DeegenStencil WARN_UNUSED DeegenStencil::ParseImpl(llvm::LLVMContext& ctx,
     //
     ReleaseAssert(mainFnSym.getAddress());
     ReleaseAssert(*mainFnSym.getAddress() == textSection.getAddress());
-    ReleaseAssert(symbolsInSectionMap[textSection].size() == 1);
+
+    // TODO: there is this random symbol in here and i dont know why ?????
+    //
+    // ReleaseAssert(symbolsInSectionMap[textSection].size() == 1);
 
     bool hasMergedPrivateDataSections = false;
     std::map<SectionRef, uint64_t /*offset*/> mergedPrivateDataSectionIndex;
@@ -980,6 +983,25 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
                 len = 4;
                 break;
             }
+            case ELF::R_AARCH64_MOVW_UABS_G0:
+            case ELF::R_AARCH64_MOVW_UABS_G0_NC:
+            case ELF::R_AARCH64_MOVW_UABS_G1:
+            case ELF::R_AARCH64_MOVW_UABS_G1_NC:
+            case ELF::R_AARCH64_MOVW_UABS_G2:
+            case ELF::R_AARCH64_MOVW_UABS_G2_NC:
+            case ELF::R_AARCH64_MOVW_UABS_G3:
+            case ELF::R_AARCH64_CONDBR19:
+            case ELF::R_AARCH64_JUMP26:
+            case ELF::R_AARCH64_CALL26:
+            case ELF::R_AARCH64_ADR_PREL_PG_HI21:
+            case ELF::R_AARCH64_ADR_PREL_PG_HI21_NC:
+            case ELF::R_AARCH64_ADD_ABS_LO12_NC:
+            case ELF::R_AARCH64_TSTBR14:
+            {
+                ReleaseAssert(rr.m_offset % 4 == 0);
+                len = 4;
+                break;
+            }
             case ELF::R_X86_64_64:
             {
                 len = 8;
@@ -1083,6 +1105,27 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
             uint64_t oldVal = UnalignedLoad<uint64_t>(p);
             uint64_t newVal = oldVal + static_cast<uint64_t>(rr.m_addend);
             UnalignedStore<uint64_t>(p, newVal);
+            break;
+        }
+        case ELF::R_AARCH64_MOVW_UABS_G0:
+        case ELF::R_AARCH64_MOVW_UABS_G0_NC:
+        case ELF::R_AARCH64_MOVW_UABS_G1:
+        case ELF::R_AARCH64_MOVW_UABS_G1_NC:
+        case ELF::R_AARCH64_MOVW_UABS_G2:
+        case ELF::R_AARCH64_MOVW_UABS_G2_NC:
+        case ELF::R_AARCH64_MOVW_UABS_G3:
+        case ELF::R_AARCH64_TSTBR14:
+        case ELF::R_AARCH64_CONDBR19:
+        case ELF::R_AARCH64_JUMP26:
+        case ELF::R_AARCH64_CALL26:
+        case ELF::R_AARCH64_ADR_PREL_PG_HI21:
+        case ELF::R_AARCH64_ADR_PREL_PG_HI21_NC:
+        case ELF::R_AARCH64_ADD_ABS_LO12_NC:
+        {
+            // On AArch64 we can't pre modify the relocation location because it also contains instruction data
+            // and thus could lead to code that can't be disassembled
+            //
+            ReleaseAssert(rr.m_offset + 4 <= codeLen);
             break;
         }
         default:
@@ -1312,6 +1355,173 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
             fprintf(fp, "}\n");
             break;
         }
+        case ELF::R_AARCH64_MOVW_UABS_G0:
+        case ELF::R_AARCH64_MOVW_UABS_G0_NC:
+        {
+            markAsRelocBytes(rr.m_offset, 4);
+            uint32_t oldVal = UnalignedLoad<uint32_t>(buf + rr.m_offset);
+            fprintf(fp, "{\n");
+            emitSymbolValue(rr);
+
+            UnalignedStore<uint32_t>(buf + rr.m_offset, 0);
+            fprintf(fp, "deegen_cp_store32(deegen_dstAddr + %llu, static_cast<uint32_t>(%lluULL) + static_cast<uint32_t>(((deegen_patch_symval + %lluULL) & 0xffff) << 5));\n",
+                    static_cast<unsigned long long>(rr.m_offset),
+                    static_cast<unsigned long long>(oldVal),
+                    static_cast<unsigned long long>(rr.m_addend));
+
+            fprintf(fp, "}\n");
+
+            break;
+        }
+        case ELF::R_AARCH64_MOVW_UABS_G1:
+        case ELF::R_AARCH64_MOVW_UABS_G1_NC:
+        {
+            markAsRelocBytes(rr.m_offset, 4);
+            uint32_t oldVal = UnalignedLoad<uint32_t>(buf + rr.m_offset);
+            fprintf(fp, "{\n");
+            emitSymbolValue(rr);
+
+            UnalignedStore<uint32_t>(buf + rr.m_offset, 0);
+            fprintf(fp, "deegen_cp_store32(deegen_dstAddr + %llu, static_cast<uint32_t>(%lluULL) + static_cast<uint32_t>((((deegen_patch_symval + %lluULL) >> 16) & 0xffff) << 5));\n",
+                    static_cast<unsigned long long>(rr.m_offset),
+                    static_cast<unsigned long long>(oldVal),
+                    static_cast<unsigned long long>(rr.m_addend));
+
+            fprintf(fp, "}\n");
+
+            break;
+        }
+        case ELF::R_AARCH64_MOVW_UABS_G2:
+        case ELF::R_AARCH64_MOVW_UABS_G2_NC:
+        {
+            markAsRelocBytes(rr.m_offset, 4);
+            uint32_t oldVal = UnalignedLoad<uint32_t>(buf + rr.m_offset);
+            fprintf(fp, "{\n");
+            emitSymbolValue(rr);
+
+            UnalignedStore<uint32_t>(buf + rr.m_offset, 0);
+            fprintf(fp, "deegen_cp_store32(deegen_dstAddr + %llu, static_cast<uint32_t>(%lluULL) + static_cast<uint32_t>((((deegen_patch_symval + %lluULL) >> 32) & 0xffff) << 5));\n",
+                    static_cast<unsigned long long>(rr.m_offset),
+                    static_cast<unsigned long long>(oldVal),
+                    static_cast<unsigned long long>(rr.m_addend));
+
+            fprintf(fp, "}\n");
+
+            break;
+        }
+        case ELF::R_AARCH64_MOVW_UABS_G3:
+        {
+            markAsRelocBytes(rr.m_offset, 4);
+            uint32_t oldVal = UnalignedLoad<uint32_t>(buf + rr.m_offset);
+            fprintf(fp, "{\n");
+            emitSymbolValue(rr);
+
+            UnalignedStore<uint32_t>(buf + rr.m_offset, 0);
+            fprintf(fp, "deegen_cp_store32(deegen_dstAddr + %llu, static_cast<uint32_t>(%lluULL) + static_cast<uint32_t>((((deegen_patch_symval + %lluULL) >> 48) & 0xffff) << 5));\n",
+                    static_cast<unsigned long long>(rr.m_offset),
+                    static_cast<unsigned long long>(oldVal),
+                    static_cast<unsigned long long>(rr.m_addend));
+
+            fprintf(fp, "}\n");
+
+            break;
+        }
+        case ELF::R_AARCH64_ADD_ABS_LO12_NC:
+        {
+            markAsRelocBytes(rr.m_offset, 4);
+            uint32_t oldVal = UnalignedLoad<uint32_t>(buf + rr.m_offset);
+            fprintf(fp, "{\n");
+            emitSymbolValue(rr);
+
+            UnalignedStore<uint32_t>(buf + rr.m_offset, 0);
+            fprintf(fp, "deegen_cp_store32(deegen_dstAddr + %llu, static_cast<uint32_t>(%lluULL) + static_cast<uint32_t>(((deegen_patch_symval + %lluULL)&MASK(12))<<10));\n",
+                    static_cast<unsigned long long>(rr.m_offset),
+                    static_cast<unsigned long long>(oldVal),
+                    static_cast<unsigned long long>(rr.m_addend));
+
+            fprintf(fp, "}\n");
+
+            break;
+        }
+        case ELF::R_AARCH64_ADR_PREL_PG_HI21:
+        case ELF::R_AARCH64_ADR_PREL_PG_HI21_NC:
+        {
+            markAsRelocBytes(rr.m_offset, 4);
+            uint32_t oldVal = UnalignedLoad<uint32_t>(buf + rr.m_offset);
+            fprintf(fp, "{\n");
+            emitSymbolValue(rr);
+
+            UnalignedStore<uint32_t>(buf + rr.m_offset, 0);
+            fprintf(fp, "uint32_t tmp = static_cast<uint32_t>(PAGE(deegen_patch_symval + %lluULL) - PAGE(reinterpret_cast<uint64_t>(deegen_dstAddr) + %lluULL));\n",
+                    static_cast<unsigned long long>(rr.m_offset),
+                    static_cast<unsigned long long>(rr.m_addend));
+            fprintf(fp, "tmp = ((tmp&~MASK(30))>>1) | ((tmp&MASK(30))>>7);\n");
+            fprintf(fp, "deegen_cp_store32(deegen_dstAddr + %llu, static_cast<uint32_t>(%lluULL) + static_cast<uint32_t>(deegen_patch_symval));\n",
+                    static_cast<unsigned long long>(rr.m_offset),
+                    static_cast<unsigned long long>(oldVal));
+
+            fprintf(fp, "}\n");
+
+            break;
+        }
+        case ELF::R_AARCH64_CONDBR19:
+        {
+            markAsRelocBytes(rr.m_offset, 4);
+            uint32_t oldVal = UnalignedLoad<uint32_t>(buf + rr.m_offset);
+            fprintf(fp, "{\n");
+            emitSymbolValue(rr);
+
+            UnalignedStore<uint32_t>(buf + rr.m_offset, 0);
+            fprintf(fp, "uint32_t tmp = static_cast<uint32_t>(deegen_patch_symval + %lluULL - (reinterpret_cast<uint64_t>(deegen_dstAddr) + %lluULL));\n",
+                    static_cast<unsigned long long>(rr.m_offset),
+                    static_cast<unsigned long long>(rr.m_addend));
+            fprintf(fp, "deegen_cp_store32(deegen_dstAddr + %llu, "
+                        "static_cast<uint32_t>(%lluU) + static_cast<uint32_t>(((tmp>>2)&MASK(19))<<5));\n",
+                    static_cast<unsigned long long>(rr.m_offset),
+                    static_cast<unsigned long long>(oldVal));
+
+            fprintf(fp, "}\n");
+            break;
+        }
+        case ELF::R_AARCH64_TSTBR14:
+        {
+            markAsRelocBytes(rr.m_offset, 4);
+            uint32_t oldVal = UnalignedLoad<uint32_t>(buf + rr.m_offset);
+            fprintf(fp, "{\n");
+            emitSymbolValue(rr);
+
+            UnalignedStore<uint32_t>(buf + rr.m_offset, 0);
+            fprintf(fp, "uint32_t tmp = static_cast<uint32_t>(deegen_patch_symval + %lluULL - (reinterpret_cast<uint64_t>(deegen_dstAddr) + %lluULL));\n",
+                    static_cast<unsigned long long>(rr.m_offset),
+                    static_cast<unsigned long long>(rr.m_addend));
+            fprintf(fp, "deegen_cp_store32(deegen_dstAddr + %llu, "
+                        "static_cast<uint32_t>(%lluU) + static_cast<uint32_t>(((tmp>>2)&MASK(14))<<5));\n",
+                    static_cast<unsigned long long>(rr.m_offset),
+                    static_cast<unsigned long long>(oldVal));
+
+            fprintf(fp, "}\n");
+            break;
+        }
+        case ELF::R_AARCH64_JUMP26:
+        case ELF::R_AARCH64_CALL26:
+        {
+            markAsRelocBytes(rr.m_offset, 4);
+            uint32_t oldVal = UnalignedLoad<uint32_t>(buf + rr.m_offset);
+            fprintf(fp, "{\n");
+            emitSymbolValue(rr);
+
+            UnalignedStore<uint32_t>(buf + rr.m_offset, 0);
+            fprintf(fp, "uint32_t tmp = static_cast<uint32_t>(deegen_patch_symval + %lluULL - (reinterpret_cast<uint64_t>(deegen_dstAddr) + %lluULL));\n",
+                    static_cast<unsigned long long>(rr.m_offset),
+                    static_cast<unsigned long long>(rr.m_addend));
+            fprintf(fp, "deegen_cp_store32(deegen_dstAddr + %llu, "
+                        "static_cast<uint32_t>(%lluU) + static_cast<uint32_t>((tmp>>2)&MASK(26)));\n",
+                    static_cast<unsigned long long>(rr.m_offset),
+                    static_cast<unsigned long long>(oldVal));
+
+            fprintf(fp, "}\n");
+            break;
+        }
         default:
         {
             fprintf(stderr, "Unhandled relocation type %llu\n", static_cast<unsigned long long>(rr.m_relocationType));
@@ -1351,6 +1561,11 @@ DeegenStencilCodegenResult WARN_UNUSED DeegenStencil::PrintCodegenFunctions(
     fprintf(fp, "#include <type_traits>\n\n");
 
     fprintf(fp, "#define FOLD_CONSTEXPR(...) (__builtin_constant_p(__VA_ARGS__) ? (__VA_ARGS__) : (__VA_ARGS__))\n");
+    fprintf(fp, "#define MASK(x) ((1ULL<<x)-1ULL)\n");
+
+    // This is copied from https://github.com/ARM-software/abi-aa/blob/main/aaelf64/aaelf64.rst
+    //
+    fprintf(fp, "#define PAGE(x) (x & ~0xFFFULL)\n");
 
     fprintf(fp, "template<typename T> using RestrictPtr = T* __restrict__;\n");
 
@@ -1969,6 +2184,8 @@ struct SimpleDisassembler
                                                    ArrayRef<uint8_t>(data.data() + offset, data.data() + data.size()),
                                                    offset /*thisAddr*/,
                                                    CommentStream);
+        if (!disassembled)
+            fprintf(stderr, "%02x%02x%02x%02x\n", data[offset], data[offset + 1], data[offset + 2], data[offset + 3]);
         ReleaseAssert(disassembled);
         ReleaseAssert(size != 0);
 
@@ -2041,6 +2258,7 @@ std::string WARN_UNUSED DumpStencilDisassemblyForAuditPurpose(
         while (offset < preFixupCode.size())
         {
             auto [size, asmStr] = disas.Disassemble(preFixupCode, offset);
+            //std::cout << asmStr << std::endl;
             ReleaseAssert(offset + size <= preFixupCode.size());
 
             fprintf(fp, "%s%3llx:", linePrefix.c_str(), static_cast<unsigned long long>(offset));

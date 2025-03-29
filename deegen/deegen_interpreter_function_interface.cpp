@@ -29,16 +29,19 @@ llvm::FunctionType* WARN_UNUSED InterpreterFunctionInterface::GetType(llvm::LLVM
         llvm_type_of<void>(ctx) /*result*/,
         {
             // R13 [CC/MSABI callee saved]
+            // X19 [CC callee save]
             // CoroutineCtx
             //
             llvm_type_of<void*>(ctx),
 
             // RBP [CC/MSABI callee saved]
+            // X20 [CC callee save]
             // StackBase (for return continuation, this is the callee's stack base)
             //
             llvm_type_of<void*>(ctx),
 
             // R12 [CC/MSABI callee saved]
+            // X21 [CC callee save]
             // For bytecode function: the current bytecode
             // For return continuation: unused
             // For function entry: #args
@@ -46,16 +49,19 @@ llvm::FunctionType* WARN_UNUSED InterpreterFunctionInterface::GetType(llvm::LLVM
             llvm_type_of<void*>(ctx),
 
             // RBX [CC/MSABI callee saved]
+            // X22 [CC callee save]
             // VMBasePointer
             //
             llvm_type_of<void*>(ctx),
 
             // R14 [CC/MSABI callee saved]
+            // X23 [CC callee save]
             // Tag register 1
             //
             llvm_type_of<uint64_t>(ctx),
 
             // RSI [MSABI callee saved]
+            // X24 [CC callee save]
             // For bytecode function: the current codeBlock
             // For return continuation: the start of the ret values
             // For function entry: codeblock
@@ -63,6 +69,7 @@ llvm::FunctionType* WARN_UNUSED InterpreterFunctionInterface::GetType(llvm::LLVM
             llvm_type_of<void*>(ctx),
 
             // RDI [MSABI callee saved]
+            // X25 [CC callee save]
             // For return continuation: the # of ret values
             // For function entry: isMustTail64
             // Otherwise unused
@@ -70,16 +77,19 @@ llvm::FunctionType* WARN_UNUSED InterpreterFunctionInterface::GetType(llvm::LLVM
             llvm_type_of<uint64_t>(ctx),
 
             // R8
+            // X26 [CC callee save]
             // unused
             //
             llvm_type_of<uint64_t>(ctx),
 
             // R9
+            // X27 [CC callee save]
             // unused
             //
             llvm_type_of<uint64_t>(ctx),
 
             // R15 [CC/MSABI callee saved]
+            // X28 [CC callee save]
             // Tag register 2
             //
             llvm_type_of<uint64_t>(ctx),

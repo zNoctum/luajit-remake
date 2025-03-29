@@ -45,7 +45,7 @@ foreach(cur_src ${DEEGEN_BYTECODE_DEFINITION_SOURCES})
   add_library(${lib_name} OBJECT
     ${cur_src}
   )
-  set_target_properties(${lib_name} PROPERTIES COMPILE_FLAGS " ${EXTRA_CXX_FLAGS_FOR_LLVM_IR} -DDEEGEN_ANNOTATED_SOURCE_FOR_BYTECODE_DEFINITION ")
+  set_target_properties(${lib_name} PROPERTIES COMPILE_FLAGS " ${EXTRA_CXX_FLAGS_FOR_LLVM_IR} -DDEEGEN_ANNOTATED_SOURCE_FOR_BYTECODE_DEFINITION -target aarch64-linux-gnu ")
 
   set(post_process_json "${GENERATED_FILES_DIR}/bytecode_info.interpreter.${cur_src}.json")
   string(SHA1 cur_src_hash "${cur_src}")
@@ -202,6 +202,6 @@ add_library(deegen_generated_interpreter_impl OBJECT
   ${baseline_jit_function_entry_emitter_asm}
   ${dfg_jit_specialization_info_cpp_file_list}
 )
-set_target_properties(deegen_generated_interpreter_impl PROPERTIES COMPILE_FLAGS " -O3 ")
+set_target_properties(deegen_generated_interpreter_impl PROPERTIES COMPILE_FLAGS " -O3 -target aarch64-linux-gnu ")
 add_dependencies(deegen_generated_interpreter_impl deegen_dfg_jit_info_api_header)
 

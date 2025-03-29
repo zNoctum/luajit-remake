@@ -624,7 +624,7 @@ inline void CopyFunctionAttributes(llvm::Function* dstFunc, llvm::Function* srcF
     constexpr const char* featuresToCopy[] = {
         "target-cpu",
         "target-features",
-        "tune-cpu",
+        //"tune-cpu",
         "frame-pointer",
         //"min-legal-vector-width",
         "no-trapping-math",
@@ -636,9 +636,12 @@ inline void CopyFunctionAttributes(llvm::Function* dstFunc, llvm::Function* srcF
         const char* feature = featuresToCopy[i];
         ReleaseAssert(!dstFunc->hasFnAttribute(feature));
         if (!srcFunc->hasFnAttribute(feature)) {
-            std::cout << feature << std::endl;
+            continue;
         }
-        ReleaseAssert(srcFunc->hasFnAttribute(feature));
+        // This is currently commented out because if we supply a specific target llvm only attaches some attributes
+        // if they diverge from the defaults
+        //
+        // ReleaseAssert(srcFunc->hasFnAttribute(feature));
         Attribute attr = srcFunc->getFnAttribute(feature);
         dstFunc->addFnAttr(attr);
         ReleaseAssert(dstFunc->hasFnAttribute(feature));
@@ -1632,7 +1635,7 @@ inline int WARN_UNUSED StoiOrFail(const std::string& s)
     int res;
     try
     {
-        res = std::stoi(s);
+        res = std::stoi(s, nullptr, 0);
     }
     catch (...)
     {
@@ -1720,42 +1723,15 @@ inline llvm::Instruction* WARN_UNUSED FindFirstNonAllocaInstInEntryBB(llvm::Func
 //
 inline void FillAddressRangeWithX64MultiByteNOPs(uint8_t* addr, size_t length)
 {
-    // From Intel's Manual:
-    //    https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-vol-2b-manual.pdf
-    //    Page 165, table 4-12, "Recommended Multi-Byte Sequence of NOP Instruction"
-    //
-    // AMD Manual recommends the same byte sequence.
-    //
-    static constexpr uint8_t nop1[] = { 0x90 };
-    static constexpr uint8_t nop2[] = { 0x66, 0x90 };
-    static constexpr uint8_t nop3[] = { 0x0F, 0x1F, 0x00 };
-    static constexpr uint8_t nop4[] = { 0x0F, 0x1F, 0x40, 0x00 };
-    static constexpr uint8_t nop5[] = { 0x0F, 0x1F, 0x44, 0x00, 0x00 };
-    static constexpr uint8_t nop6[] = { 0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00 };
-    static constexpr uint8_t nop7[] = { 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00 };
-    static constexpr uint8_t nop8[] = { 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 };
-    static constexpr uint8_t nop9[] = { 0x66, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 };
+    static constexpr uint8_t nop4[] = { 0x1F, 0x20, 0x03, 0xd5 };
 
-    // NOP 10-15: we use the NOP sequence from JavaScriptCore, see
-    //     https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/assembler/X86Assembler.h.html#3990
-    //
-    static constexpr uint8_t nop10[] = { 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x02, 0x00, 0x00 };
-    static constexpr uint8_t nop11[] = { 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x02, 0x00, 0x00 };
-    static constexpr uint8_t nop12[] = { 0x66, 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x02, 0x00, 0x00 };
-    static constexpr uint8_t nop13[] = { 0x66, 0x66, 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x02, 0x00, 0x00 };
-    static constexpr uint8_t nop14[] = { 0x66, 0x66, 0x66, 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x02, 0x00, 0x00 };
-    static constexpr uint8_t nop15[] = { 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x02, 0x00, 0x00 };
+    ReleaseAssert(length % 4 == 0);
 
-    static constexpr const uint8_t* nops[16] = {
-        nullptr, nop1, nop2, nop3, nop4, nop5, nop6, nop7, nop8, nop9, nop10, nop11, nop12, nop13, nop14, nop15
-    };
     while (length > 0)
     {
-        size_t choice = 15;
-        choice = std::min(choice, length);
-        memcpy(addr, nops[choice], choice);
-        length -= choice;
-        addr += choice;
+        memcpy(addr, nop4, 4);
+        length -= 4;
+        addr += 4;
     }
 }
 

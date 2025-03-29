@@ -17,7 +17,7 @@ StringList GetStringList(VM* vm, size_t n)
         {
             s = "";
             size_t len = static_cast<size_t>(rand() % 20);
-            for (size_t k = 0; k < len; k++) s += 'a' + rand() % 26;
+            for (size_t k = 0; k < len; k++) s += 'a' + static_cast<char>(rand() % 26);
             if (!used.count(s))
             {
                 break;

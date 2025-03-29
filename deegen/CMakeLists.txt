@@ -1,4 +1,4 @@
-add_library(deegen_utils 
+set(DEEGEN_UTILS_SRC
   type_speculation_printer.cpp
   llvm_ir_cleanup_pass.cpp
   llvm_extract_function.cpp
@@ -59,6 +59,11 @@ add_library(deegen_utils
   vm_base_pointer_optimization.cpp
 )
 
+add_library(deegen_utils ${DEEGEN_UTILS_SRC})
+add_library(deegen_utils_target ${DEEGEN_UTILS_SRC})
+target_compile_options(deegen_utils PRIVATE -I/usr/include/c++/14)
+target_compile_options(deegen_utils_target PRIVATE -target aarch64-unknown-linux-gnu)
+
 # Build the main Futamura projection stage binary
 #
 add_executable(fps
@@ -78,7 +83,7 @@ target_link_libraries(fps PUBLIC
   deegen_utils
   deegen_common_snippet_ir
   -Wl,--end-group
-  ${LLVM_EXTRA_LINK_LIBRARIES} 
+  ${LLVM_EXTRA_LINK_LIBRARIES}
 )
 
 set(fps_exec "${PROJECT_BINARY_DIR}/deegen/fps")
@@ -109,4 +114,6 @@ add_custom_command(
 add_library(deegen_interpreter_fn_entry_logic OBJECT
   ${deegen_interpreter_function_entry_sources}
 )
-
+target_compile_options(deegen_interpreter_fn_entry_logic PRIVATE
+  -target aarch64-linux-gnu
+)

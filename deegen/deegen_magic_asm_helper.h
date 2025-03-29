@@ -38,8 +38,8 @@ struct MagicAsm
         ReleaseAssert(static_cast<uint32_t>(magicKind) < static_cast<uint32_t>(MagicAsmKind::X_END_OF_ENUM));
         uint32_t val = 100 + static_cast<uint32_t>(magicKind);
         std::string strVal = std::to_string(val);
-        std::string prefix =  "hlt;int $$" + strVal + ";";
-        std::string suffix = "int $$" + strVal + ";hlt;";
+        std::string prefix =  "hlt #" + strVal + ";";
+        std::string suffix = "hlt #" + strVal + ";";
         return prefix + llvmAsmStr + suffix;
     }
 
@@ -59,11 +59,11 @@ struct MagicAsm
             return false;
         }
         std::string asmStr = ia->getAsmString();
-        if (!asmStr.starts_with("hlt;int $$"))
+        if (!asmStr.starts_with("hlt #"))
         {
             return false;
         }
-        asmStr = asmStr.substr(strlen("hlt;int $$"));
+        asmStr = asmStr.substr(strlen("hlt #"));
         size_t loc = asmStr.find(";");
         ReleaseAssert(loc != std::string::npos);
         ReleaseAssert(loc > 0);
@@ -75,7 +75,7 @@ struct MagicAsm
 
         asmStr = asmStr.substr(loc + 1);
 
-        std::string expectedSuffix = "int $$" + magicKindStr + ";hlt;";
+        std::string expectedSuffix = "hlt #" + magicKindStr + ";";
         ReleaseAssert(asmStr.ends_with(expectedSuffix));
         asmStr = asmStr.substr(0, asmStr.length() - expectedSuffix.length());
         magicStr = asmStr;

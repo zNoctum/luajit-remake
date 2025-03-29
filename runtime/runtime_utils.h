@@ -1232,62 +1232,7 @@ inline double WARN_UNUSED ModulusWithLuaSemantics_PUCLuaReference_5_1(double a, 
 //
 inline double WARN_UNUSED ALWAYS_INLINE ModulusWithLuaSemantics_5_1_NoSSE4(double a, double b)
 {
-    double fpr1, fpr2, fpr3, fpr4;
-    uint64_t gpr1;
-    asm (
-        "movapd %[x0], %[x5];"                      // x5 = a
-        "divsd %[x1], %[x0];"                       // x0 = a / b
-
-        "movabsq $0x7FFFFFFFFFFFFFFF, %[r0];"       // x2 = bitcast<double>(0x7FFFFFFFFFFFFFFFULL)
-        "movq %[r0], %[x2];"                        //
-
-        "movabsq $0x4330000000000000, %[r0];"       // x3 = (double)2^52
-        "movq %[r0], %[x3];"                        //
-
-        "movapd %[x0], %[x4];"                      // x4 = abs(a / b)
-        "andpd %[x2], %[x4];"                       //
-
-        "ucomisd %[x4], %[x3];"                     // if (2**52 <= abs(a / b)) goto 1
-        "jbe 1f;"                                   //
-
-        "andnpd %[x0], %[x2];"                      // x2 = signmask(a / b)
-
-        "addsd %[x3], %[x4];"                       // x4 = abs(a / b) + 2^52 - 2^52
-        "subsd %[x3], %[x4];"                       //
-
-        "orpd %[x2], %[x4];"                        // x4 = copysign(x4, x2)
-
-        "movabsq $0x3ff0000000000000, %[r0];"       // x4 -= (x0 < x4) ? 1.0 : 0.0
-        "movq %[r0], %[x2];"                        //
-        "cmpltsd %[x4], %[x0];"                     //
-        "andpd %[x2], %[x0];"                       //
-        "subsd %[x0], %[x4];"                       //
-
-        "movapd %[x5], %[x0];"                      // result = a - x4 * b
-        "mulsd %[x4], %[x1];"                       //
-        "subsd %[x1], %[x0];"                       //
-
-        "jmp 2f;"
-
-        "1:;"
-
-        "mulsd %[x0], %[x1];"                       // result = a - (a / b) * b
-        "movapd %[x5], %[x0];"                      //
-        "subsd %[x1], %[x0];"                       //
-
-        "2:;"
-        :
-            [x0] "+x"(a) /*inout*/,
-            [x1] "+x"(b) /*inout*/,
-            [x2] "=&x"(fpr1) /*scratch*/,
-            [x3] "=&x"(fpr2) /*scratch*/,
-            [x4] "=&x"(fpr3) /*scratch*/,
-            [x5] "=&x"(fpr4) /*scratch*/,
-            [r0] "=&r"(gpr1) /*scratch*/
-        :   /*no read-only input*/
-        :  "cc" /*clobber*/);
-
-    return a;
+    return std::fmod(a, b);
 }
 
 inline double ALWAYS_INLINE WARN_UNUSED ModulusWithLuaSemantics(double a, double b)

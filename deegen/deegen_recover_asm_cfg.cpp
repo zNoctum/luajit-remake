@@ -30,7 +30,7 @@ void DeegenAsmCfg::AnalyzeIndirectBranch(X64AsmFile* file, llvm::Function* /*fun
                 //
                 if (addHumanDebugComment)
                 {
-                    line.m_trailingComments += "# [CFG]: tailcall";
+                    line.m_trailingComments += "// [CFG]: tailcall";
                 }
             }
             else
@@ -115,8 +115,7 @@ DeegenAsmCfg WARN_UNUSED DeegenAsmCfg::GetCFG(X64AsmFile* file)
         {
             if (line.IsDirectUnconditionalJumpInst() || line.IsConditionalJumpInst())
             {
-                ReleaseAssert(line.NumWords() == 2);
-                std::string rawLabel = line.GetWord(1);
+                std::string rawLabel = line.GetWord(line.NumWords() - 1);
                 if (file->m_labelNormalizer.QueryLabelExists(rawLabel))
                 {
                     std::string dstLabel = file->m_labelNormalizer.GetNormalizedLabel(rawLabel);

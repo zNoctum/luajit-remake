@@ -49,94 +49,6 @@
 // I believe this is fair, since small integer exponent should consist of the majority of the uses of 'pow'.
 //
 
-// The assembly code is adapted, with changes, from LuaJIT vm_x64.dasc
-//
-static double WARN_UNUSED ALWAYS_INLINE math_fastpow_negative_or_zero_int_exponent(double b, int32_t e)
-{
-    uint64_t gpr1;
-    double fpr1;
-    double out;
-    asm (
-        "movabsq $0x3ff0000000000000, %[r1];"
-        "movq %[r1], %[x3];"
-        "test %[r0], %[r0];"
-        "je 6f;"
-        "neg %[r0];"
-        "1:;"
-        "test $0x1, %[r0];"
-        "jnz 2f;"
-        "mulsd %[x0], %[x0];"
-        "shr $0x1, %[r0];"
-        "jmp 1b;"
-        "2:;"
-        "shr $0x1, %[r0];"
-        "jz 5f;"
-        "movapd %[x0], %[x2];"
-        "3:;"
-        "mulsd %[x0], %[x0];"
-        "shr $0x1, %[r0];"
-        "jz 4f;"
-        "jnc 3b;"
-        "mulsd %[x0], %[x2];"
-        "jmp 3b;"
-        "4:;"
-        "mulsd %[x2], %[x0];"
-        "5:;"
-        "divsd %[x0], %[x3];"
-        "6:;"
-        :
-        [x0] "+x"(b) /*inout*/,
-        [r0] "+r"(e) /*inout*/,
-        [x2] "=&x"(fpr1) /*scratch*/,
-        [x3] "=&x"(out) /*out*/,
-        [r1] "=&r"(gpr1) /*scratch*/
-        :   /*no read-only input*/
-        :   "cc" /*clobber*/);
-    return out;
-}
-
-// The assembly code is adapted, with changes, from LuaJIT vm_x64.dasc
-//
-static double WARN_UNUSED ALWAYS_INLINE math_fast_pow_positive_int_exponent(double b, int32_t e)
-{
-    uint64_t gpr1;
-    double fpr1;
-    asm (
-        "cmp $0x2, %[r0];"
-        "jle 4f;"
-        "1:;"
-        "test $0x1, %[r0];"
-        "jnz 2f;"
-        "mulsd %[x0], %[x0];"
-        "shr $0x1, %[r0];"
-        "jmp 1b;"
-        "2:;"
-        "shr $0x1, %[r0];"
-        "jz 6f;"
-        "movapd %[x0], %[x2];"
-        "3:;"
-        "mulsd %[x0], %[x0];"
-        "shr $0x1, %[r0];"
-        "jz 5f;"
-        "jnc 3b;"
-        "mulsd %[x0], %[x2];"
-        "jmp 3b;"
-        "4:;"
-        "movapd %[x0], %[x2];"
-        "jne 6f;"
-        "5:;"
-        "mulsd %[x2], %[x0];"
-        "6:;"
-        :
-        [x0] "+x"(b) /*inout*/,
-        [r0] "+r"(e) /*inout*/,
-        [x2] "=&x"(fpr1) /*scratch*/,
-        [r1] "=&r"(gpr1) /*scratch*/
-        :  /*no read-only input*/
-        :  "cc" /*clobber*/);
-    return b;
-}
-
 // Computes b^ex
 //
 // For some reason this triggers clang spurious warning that cannot be fixed.. So we have to supress the warning.
@@ -145,33 +57,6 @@ static double WARN_UNUSED ALWAYS_INLINE math_fast_pow_positive_int_exponent(doub
 #pragma clang diagnostic ignored "-Wconditional-uninitialized"
 double WARN_UNUSED math_fast_pow(double b, double ex)
 {
-    double fpr1;
-    int32_t e;
-    asm goto (
-        "cvtsd2si %[x1], %[r0];"
-        "movsbl %b[r0], %[r0];"             // only use fastpath if exponent is within [-128, 128)
-        "cvtsi2sd %[r0], %[x2];"
-        "ucomisd %[x1], %[x2];"
-        "jne %l[slowpath];"
-        "jp %l[slowpath];"
-        :
-            [r0] "=r"(e) /*out*/,
-            [x2] "=&x"(fpr1) /*scratch*/
-        :
-            [x1] "x"(ex) /*in*/
-        :
-            "cc" /*clobber*/
-        :
-            slowpath /*goto*/);
-    if (e > 0)
-    {
-        return math_fast_pow_positive_int_exponent(b, e);
-    }
-    else
-    {
-        return math_fastpow_negative_or_zero_int_exponent(b, e);
-    }
-slowpath:
     return pow(b, ex);
 }
 #pragma clang diagnostic pop

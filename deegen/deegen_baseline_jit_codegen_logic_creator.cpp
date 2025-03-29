@@ -318,8 +318,7 @@ DeegenBytecodeBaselineJitInfo WARN_UNUSED DeegenBytecodeBaselineJitInfo::Create(
     std::unordered_map<std::string, size_t> stencilToFastPathOffsetMap;
     {
         size_t offset = 0;
-        for (size_t i = 0; i < stencilList.size(); i++)
-        {
+        for (size_t i = 0; i < stencilList.size(); i++) {
             std::string name = stencilGeneratorList[i]->GetResultFunctionName();
             ReleaseAssert(!stencilToFastPathOffsetMap.count(name));
             stencilToFastPathOffsetMap[name] = offset;
@@ -476,27 +475,27 @@ DeegenBytecodeBaselineJitInfo WARN_UNUSED DeegenBytecodeBaselineJitInfo::Create(
         Triple targetTriple = stencilList[0].m_triple;
 
         std::string fastPathAuditLog = DumpStencilDisassemblyForAuditPurpose(
-            targetTriple, false /*isDataSection*/, fastPath.m_code, fastPath.m_relocMarker, "# " /*linePrefix*/);
+            targetTriple, false /*isDataSection*/, fastPath.m_code, fastPath.m_relocMarker, "// " /*linePrefix*/);
 
-        std::string finalAuditLog = std::string("# Fast Path:\n") + fastPathAuditLog;
+        std::string finalAuditLog = std::string("// Fast Path:\n") + fastPathAuditLog;
 
         if (slowPath.m_code.size() > 0)
         {
             std::string slowPathAuditLog = DumpStencilDisassemblyForAuditPurpose(
-                targetTriple, false /*isDataSection*/, slowPath.m_code, slowPath.m_relocMarker, "# " /*linePrefix*/);
+                targetTriple, false /*isDataSection*/, slowPath.m_code, slowPath.m_relocMarker, "// " /*linePrefix*/);
 
-            finalAuditLog += std::string("#\n# Slow Path:\n") + slowPathAuditLog;
+            finalAuditLog += std::string("//\n// Slow Path:\n") + slowPathAuditLog;
         }
 
         if (dataSec.m_code.size() > 0)
         {
             std::string dataSecAuditLog = DumpStencilDisassemblyForAuditPurpose(
-                targetTriple, true /*isDataSection*/, dataSec.m_code, dataSec.m_relocMarker, "# " /*linePrefix*/);
+                targetTriple, true /*isDataSection*/, dataSec.m_code, dataSec.m_relocMarker, "// " /*linePrefix*/);
 
-            finalAuditLog += std::string("#\n# Data Section:\n") + dataSecAuditLog;
+            finalAuditLog += std::string("//\n// Data Section:\n") + dataSecAuditLog;
         }
 
-        finalAuditLog += std::string("#\n\n");
+        finalAuditLog += std::string("//\n\n");
         res.m_disasmForAudit = finalAuditLog;
     }
 

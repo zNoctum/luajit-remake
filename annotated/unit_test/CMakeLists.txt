@@ -21,7 +21,7 @@ SET(DEEGEN_UNIT_TEST_IR_SOURCES
 add_library(deegen_unit_test_ir_sources OBJECT
   ${DEEGEN_UNIT_TEST_IR_SOURCES}
 )
-set_target_properties(deegen_unit_test_ir_sources PROPERTIES COMPILE_FLAGS " ${EXTRA_CXX_FLAGS_FOR_LLVM_IR} -DDEEGEN_ANNOTATED_SOURCE_FOR_USER_BUILTIN_LIBRARY -DDEEGEN_ANNOTATED_SOURCE_FOR_BYTECODE_DEFINITION ")
+set_target_properties(deegen_unit_test_ir_sources PROPERTIES COMPILE_FLAGS " ${EXTRA_CXX_FLAGS_FOR_LLVM_IR} -DDEEGEN_ANNOTATED_SOURCE_FOR_USER_BUILTIN_LIBRARY -DDEEGEN_ANNOTATED_SOURCE_FOR_BYTECODE_DEFINITION -target aarch64-unknown-linux-gnu ")
 
 # This is the logic that packages the IR into the resource library to be linked to the unit test executable
 # This is a really simple file but it needs to process a lot of data, so always compile with -O3 for speed
@@ -30,6 +30,7 @@ add_executable(package_unit_test_ir
   package_unit_test_ir.cpp   
 ) 
 set_target_properties(package_unit_test_ir PROPERTIES COMPILE_FLAGS " -O3 ")
+#set_target_properties(package_unit_test_ir PROPERTIES LINK_FLAGS " -target aarch64-unknown-linux-gnu ")
 
 set(generated_src_list "")
 foreach(cur_src ${DEEGEN_UNIT_TEST_IR_SOURCES})
@@ -51,5 +52,5 @@ add_library(deegen_unit_test_ir
   ${GENERATED_FILES_DIR}/deegen_unit_test_ir_accessor.cpp
   ${generated_src_list}
 )
-set_target_properties(deegen_unit_test_ir PROPERTIES COMPILE_FLAGS " -O3 ")
+set_target_properties(deegen_unit_test_ir PROPERTIES COMPILE_FLAGS " -O3 -target aarch64-unknown-linux-gnu ")
 

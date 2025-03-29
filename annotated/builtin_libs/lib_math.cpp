@@ -1,7 +1,6 @@
 #include "deegen_api.h"
 #include "lualib_tonumber_util.h"
 #include "runtime_utils.h"
-#include <emmintrin.h>
 
 // For math unary functions, get the first argument to the function as a double value and store it into 'argName',
 // throwing an error if the action cannot be performed ('funcName' is built into the error message)
@@ -420,20 +419,6 @@ DEEGEN_DEFINE_LIB_FUNC(math_sinh)
     Return(TValue::Create<tDouble>(sinh(arg)));
 }
 
-// C library's sqrt sets errno, which is unfortunately slow and inhibits compiler optimization
-// It seems like the only way to generate a sqrt without errno is to use Intel intrinsics, which is what this function does.
-//
-inline double WARN_UNUSED ALWAYS_INLINE sqrt_no_errno(double val)
-{
-    __m128d x; x[0] = val;
-    // dst = _mm_sqrt_sd(a, b):
-    //     dst[63:0] := SQRT(b[63:0])
-    //     dst[127:64] := a[127:64]
-    //
-    x = _mm_sqrt_sd(x, x);
-    return x[0];
-}
-
 // math.sqrt -- https://www.lua.org/manual/5.1/manual.html#pdf-math.sqrt
 //
 // math.sqrt (x)
@@ -442,7 +427,8 @@ inline double WARN_UNUSED ALWAYS_INLINE sqrt_no_errno(double val)
 DEEGEN_DEFINE_LIB_FUNC(math_sqrt)
 {
     MATH_LIB_UNARY_FN_GET_ARG(sqrt, arg);
-    Return(TValue::Create<tDouble>(sqrt_no_errno(arg)));
+    // TODO: replace with a more optimal version sqrt that doesn't set ERRNO.
+    Return(TValue::Create<tDouble>(std::sqrt(arg)));
 }
 
 // math.tan -- https://www.lua.org/manual/5.1/manual.html#pdf-math.tan

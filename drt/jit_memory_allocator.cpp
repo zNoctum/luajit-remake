@@ -17,7 +17,7 @@ JitMemoryPageHeader* WARN_UNUSED JitMemoryAllocator::AllocateUninitalizedPage()
     constexpr size_t x_pageSize = JitMemoryPageHeaderBase::x_pageSize;
     if (unlikely(m_reservedRangeCur == m_reservedRangeEnd))
     {
-        void* reservedRange = do_mmap_with_custom_alignment(x_pageSize /*alignment*/, x_reserveRangeSize, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | MAP_32BIT);
+        void* reservedRange = do_mmap_with_custom_alignment(x_pageSize /*alignment*/, x_reserveRangeSize, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE);
         m_reservedRangeCur = reinterpret_cast<uint64_t>(reservedRange);
         assert(m_reservedRangeCur % x_pageSize == 0);
         m_reservedRangeEnd = m_reservedRangeCur + x_reserveRangeSize;
@@ -48,7 +48,7 @@ void* WARN_UNUSED JitMemoryAllocator::DoLargeAllocation(size_t size)
     void* ptrVoid = do_mmap_with_custom_alignment(x_pageSize /*alignment*/,
                                                   size /*length*/,
                                                   PROT_READ | PROT_WRITE | PROT_EXEC,
-                                                  MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE | MAP_32BIT);
+                                                  MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE);
 
     JitMemoryLargeAllocationHeader* hdr = reinterpret_cast<JitMemoryLargeAllocationHeader*>(ptrVoid);
     hdr->Initialize(size, &m_laAnchor);

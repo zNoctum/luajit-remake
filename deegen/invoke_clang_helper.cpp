@@ -8,7 +8,7 @@ static std::string WARN_UNUSED GetRandomFileName()
     std::string res = "";
     for (size_t i = 0; i < 10; i++)
     {
-        char ch = 'a' + rand() % 26;
+        char ch = 'a' + static_cast<char>(rand() % 26);
         res += ch;
     }
     return res;
@@ -62,15 +62,15 @@ std::string WARN_UNUSED CompileAssemblyFileToObjectFile(const std::string& asmFi
     switch (arch)
     {
     case Arch::X86:
-        arch_str = std::string("x86-64 ");
+        arch_str = std::string("x86_64-unknown-linux-gnu ");
         break;
     case Arch::AArch64:
-        arch_str = std::string("armv8a ");
+        arch_str = std::string("aarch64-unknown-linux-gnu ");
         break;
     }
 
     std::string cmd =
-        std::string("clang -O3 -Weverything -Werror -march=")
+        std::string("clang -O3 -Weverything -Werror -target ")
         + arch_str
         + extraCmdlineArgs
         + " -o " + objFilePath
