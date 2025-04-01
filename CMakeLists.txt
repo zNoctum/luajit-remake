@@ -162,7 +162,6 @@ include_directories("${PROJECT_SOURCE_DIR}/drt")
 add_library(git_commit_hash_info
   "${GENERATED_FILES_DIR}/git_commit_hash.cpp"
 )
-target_compile_options(git_commit_hash_info PRIVATE -target aarch64-unknown-linux-gnu)
 
 add_subdirectory(deegen)
 
@@ -220,7 +219,7 @@ set(UNIT_TEST_LINK_LIBRARIES
   runtime
   legacy_json_bc_dump_parser
   deegen_rt
-  deegen_utils_target
+  deegen_utils
   deegen_fps_lib
   deegen_user_builtin_lib
   deegen_unit_test_ir
@@ -242,35 +241,35 @@ add_library(unit_test_main_src OBJECT
 add_dependencies(unit_test_main_src
   deegen_fps_lib
 )
-set_target_properties(unit_test_main_src PROPERTIES COMPILE_FLAGS " -DDEEGEN_POST_FUTAMURA_PROJECTION -target aarch64-unknown-linux-gnu")
+set_target_properties(unit_test_main_src PROPERTIES COMPILE_FLAGS " -DDEEGEN_POST_FUTAMURA_PROJECTION ")
 
-#add_executable(main $<TARGET_OBJECTS:unit_test_main_src> )
-#target_link_options(main PUBLIC ${UNIT_TEST_LINK_OPTIONS})
-#target_link_libraries(main PUBLIC
-#  -Wl,--start-group
-#  ${UNIT_TEST_LINK_LIBRARIES}
-#  -Wl,--end-group
-#  ${LLVM_EXTRA_LINK_LIBRARIES}
-#)
-#set_target_properties(main PROPERTIES LINK_FLAGS " ${LLVM_EXTRA_LINK_FLAGS} -Wl,-rpath='$ORIGIN/shared_libs' ")
-#target_link_options(main PRIVATE -target aarch64-unknown-linux-gnu)
+add_executable(main $<TARGET_OBJECTS:unit_test_main_src> )
+target_link_options(main PUBLIC ${UNIT_TEST_LINK_OPTIONS})
+target_link_libraries(main PUBLIC
+  -Wl,--start-group
+  ${UNIT_TEST_LINK_LIBRARIES}
+  -Wl,--end-group
+  ${LLVM_EXTRA_LINK_LIBRARIES}
+)
+set_target_properties(main PROPERTIES LINK_FLAGS " ${LLVM_EXTRA_LINK_FLAGS} -Wl,-rpath='$ORIGIN/shared_libs' ")
+#set_target_properties(main PROPERTIES LINK_FLAGS " ${LLVM_EXTRA_LINK_FLAGS} -Wl,-rpath='$ORIGIN/shared_libs' -fsanitize=address ")
+
+# It seems like duplicate symbols (e.g., defining the same function twice, or other ODR violations) are
+# normally ignored if they happen in the static library, which could cause tricky bugs.
+# But if explicitly passed --whole-archive option, those duplicate symbols can be detected by the linker.
+# So we create another fake executable, to detect such bugs.
+# It seems like mold is so fast that linking time is negligible, so it shouldn't slow down build.
 #
-## It seems like duplicate symbols (e.g., defining the same function twice, or other ODR violations) are
-## normally ignored if they happen in the static library, which could cause tricky bugs.
-## But if explicitly passed --whole-archive option, those duplicate symbols can be detected by the linker.
-## So we create another fake executable, to detect such bugs.
-## It seems like mold is so fast that linking time is negligible, so it shouldn't slow down build.
-##
-#add_executable(main_detect_duplicate_symbols $<TARGET_OBJECTS:unit_test_main_src> )
-#target_link_options(main_detect_duplicate_symbols PUBLIC ${UNIT_TEST_LINK_OPTIONS})
-#target_link_libraries(main_detect_duplicate_symbols PUBLIC
-#  -Wl,--whole-archive
-#  ${UNIT_TEST_LINK_LIBRARIES}
-#  -Wl,--no-whole-archive
-#  ${LLVM_EXTRA_LINK_LIBRARIES}
-#)
-#set_target_properties(main_detect_duplicate_symbols PROPERTIES LINK_FLAGS " ${LLVM_EXTRA_LINK_FLAGS} -Wl,-rpath='$ORIGIN/shared_libs' ")
-#target_link_options(main_detect_duplicate_symbols PRIVATE -target aarch64-unknown-linux-gnu)
+add_executable(main_detect_duplicate_symbols $<TARGET_OBJECTS:unit_test_main_src> )
+target_link_options(main_detect_duplicate_symbols PUBLIC ${UNIT_TEST_LINK_OPTIONS})
+target_link_libraries(main_detect_duplicate_symbols PUBLIC
+  -Wl,--whole-archive
+  ${UNIT_TEST_LINK_LIBRARIES}
+  -Wl,--no-whole-archive
+  ${LLVM_EXTRA_LINK_LIBRARIES}
+)
+set_target_properties(main_detect_duplicate_symbols PROPERTIES LINK_FLAGS " ${LLVM_EXTRA_LINK_FLAGS} -Wl,-rpath='$ORIGIN/shared_libs' ")
+#set_target_properties(main_detect_duplicate_symbols PROPERTIES LINK_FLAGS " ${LLVM_EXTRA_LINK_FLAGS} -Wl,-rpath='$ORIGIN/shared_libs' -fsanitize=address ")
 
 
 # add the standalone Lua engine executable
@@ -285,7 +284,7 @@ target_link_libraries(luajitr PUBLIC
   deegen_user_builtin_lib
   -Wl,--end-group
 )
-target_link_options(luajitr PRIVATE -target aarch64-unknown-linux-gnu)
+#set_target_properties(luajitr PROPERTIES LINK_FLAGS " -fsanitize=address ")
 
 # detect duplicate symbols, see above
 #
@@ -299,5 +298,5 @@ target_link_libraries(luajitr_detect_duplicate_symbols PUBLIC
   deegen_user_builtin_lib
   -Wl,--no-whole-archive
 )
-target_link_options(luajitr_detect_duplicate_symbols PRIVATE -target aarch64-unknown-linux-gnu)
 
+#set_target_properties(luajitr_detect_duplicate_symbols PROPERTIES LINK_FLAGS " -fsanitize=address ")

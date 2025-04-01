@@ -13,17 +13,18 @@ add_library(runtime
 add_dependencies(runtime 
   deegen_fps_lib
 )
-set_target_properties(runtime PROPERTIES COMPILE_FLAGS " -DDEEGEN_POST_FUTAMURA_PROJECTION -target aarch64-unknown-linux-gnu")
+set_target_properties(runtime PROPERTIES COMPILE_FLAGS " -DDEEGEN_POST_FUTAMURA_PROJECTION ")
+#set_target_properties(runtime PROPERTIES COMPILE_FLAGS " -DDEEGEN_POST_FUTAMURA_PROJECTION -fsanitize=address ")
 
 # The legacy JSON bytecode dump parser, only used for unit tests as a debugging tool
 #
 add_library(legacy_json_bc_dump_parser
   legacy_json_bc_dump_parser.cpp
 )
-target_compile_options(legacy_json_bc_dump_parser PRIVATE -target aarch64-unknown-linux-gnu)
 
 add_dependencies(legacy_json_bc_dump_parser 
   deegen_fps_lib
 )
 set_target_properties(legacy_json_bc_dump_parser PROPERTIES COMPILE_FLAGS " -DDEEGEN_POST_FUTAMURA_PROJECTION ")
+#set_target_properties(legacy_json_bc_dump_parser PROPERTIES COMPILE_FLAGS " -DDEEGEN_POST_FUTAMURA_PROJECTION -fsanitize=address ")
 

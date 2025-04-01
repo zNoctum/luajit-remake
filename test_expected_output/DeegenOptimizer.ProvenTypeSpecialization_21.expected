@@ -1,22 +1,22 @@
 ; ModuleID = 'extracted_ir'
 source_filename = "/home/u/project/annotated/unit_test/proven_type_specialization.cpp"
-target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
-target triple = "x86_64-unknown-linux-gnu"
+target datalayout = "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128"
+target triple = "aarch64-unknown-linux-gnu"
 
 @.str = private unnamed_addr constant [14 x i8] c"cannot handle\00", align 1
 
 ; Function Attrs: nounwind readnone willreturn uwtable
-declare dso_local noundef zeroext i1 @_Z19DeegenImpl_TValueIsI6tTableEb6TValue(i64) #0
+declare dso_local noundef i1 @_Z19DeegenImpl_TValueIsI6tTableEb6TValue(i64) #0
 
 ; Function Attrs: nounwind readnone willreturn uwtable
-declare dso_local noundef zeroext i1 @_Z19DeegenImpl_TValueIsI9tFunctionEb6TValue(i64) #0
+declare dso_local noundef i1 @_Z19DeegenImpl_TValueIsI9tFunctionEb6TValue(i64) #0
 
 ; Function Attrs: mustprogress nounwind readnone willreturn uwtable
-declare dso_local noundef zeroext i1 @_Z19DeegenImpl_TValueIsI7tDoubleEb6TValue(i64) #1
+declare dso_local noundef i1 @_Z19DeegenImpl_TValueIsI7tDoubleEb6TValue(i64) #1
 
 ; Function Attrs: noreturn nounwind uwtable
 define dso_local void @testfn4(i64 %0) #2 {
-  %2 = tail call noundef zeroext i1 @_Z19DeegenImpl_TValueIsI6tTableEb6TValue(i64 %0) #4
+  %2 = tail call noundef i1 @_Z19DeegenImpl_TValueIsI6tTableEb6TValue(i64 %0) #4
   br i1 %2, label %3, label %4
 
 3:                                                ; preds = %1
@@ -24,7 +24,7 @@ define dso_local void @testfn4(i64 %0) #2 {
   unreachable
 
 4:                                                ; preds = %1
-  %5 = tail call noundef zeroext i1 @_Z19DeegenImpl_TValueIsI9tFunctionEb6TValue(i64 %0) #4
+  %5 = tail call noundef i1 @_Z19DeegenImpl_TValueIsI9tFunctionEb6TValue(i64 %0) #4
   br i1 %5, label %6, label %7
 
 6:                                                ; preds = %4
@@ -32,7 +32,7 @@ define dso_local void @testfn4(i64 %0) #2 {
   unreachable
 
 7:                                                ; preds = %4
-  %8 = tail call noundef zeroext i1 @_Z19DeegenImpl_TValueIsI7tDoubleEb6TValue(i64 %0) #4
+  %8 = tail call noundef i1 @_Z19DeegenImpl_TValueIsI7tDoubleEb6TValue(i64 %0) #4
   br i1 %8, label %9, label %10
 
 9:                                                ; preds = %7
@@ -50,15 +50,16 @@ declare dso_local void @DeegenImpl_ReturnValue(i64) local_unnamed_addr #3
 ; Function Attrs: noreturn
 declare dso_local void @DeegenImpl_ThrowErrorCString(ptr noundef) local_unnamed_addr #3
 
-attributes #0 = { nounwind readnone willreturn uwtable "frame-pointer"="none" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+bmi,+crc32,+cx8,+fxsr,+mmx,+popcnt,+sse,+sse2,+sse3,+sse4.1,+sse4.2,+ssse3,+x87" "tune-cpu"="generic" }
-attributes #1 = { mustprogress nounwind readnone willreturn uwtable "frame-pointer"="none" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+bmi,+crc32,+cx8,+fxsr,+mmx,+popcnt,+sse,+sse2,+sse3,+sse4.1,+sse4.2,+ssse3,+x87" "tune-cpu"="generic" }
-attributes #2 = { noreturn nounwind uwtable "frame-pointer"="none" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+bmi,+crc32,+cx8,+fxsr,+mmx,+popcnt,+sse,+sse2,+sse3,+sse4.1,+sse4.2,+ssse3,+x87" "tune-cpu"="generic" }
-attributes #3 = { noreturn "frame-pointer"="none" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+bmi,+crc32,+cx8,+fxsr,+mmx,+popcnt,+sse,+sse2,+sse3,+sse4.1,+sse4.2,+ssse3,+x87" "tune-cpu"="generic" }
+attributes #0 = { nounwind readnone willreturn uwtable "frame-pointer"="non-leaf" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="generic" "target-features"="+neon,+outline-atomics,+v8a" }
+attributes #1 = { mustprogress nounwind readnone willreturn uwtable "frame-pointer"="non-leaf" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="generic" "target-features"="+neon,+outline-atomics,+v8a" }
+attributes #2 = { noreturn nounwind uwtable "frame-pointer"="non-leaf" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="generic" "target-features"="+neon,+outline-atomics,+v8a" }
+attributes #3 = { noreturn "frame-pointer"="non-leaf" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="generic" "target-features"="+neon,+outline-atomics,+v8a" }
 attributes #4 = { nounwind readnone willreturn }
 attributes #5 = { noreturn nounwind }
 
 !llvm.linker.options = !{}
-!llvm.module.flags = !{!0, !1}
+!llvm.module.flags = !{!0, !1, !2}
 
 !0 = !{i32 1, !"wchar_size", i32 4}
 !1 = !{i32 7, !"uwtable", i32 2}
+!2 = !{i32 7, !"frame-pointer", i32 1}

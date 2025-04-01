@@ -23,5 +23,6 @@ add_library(deegen_rt
 add_dependencies(deegen_rt 
   deegen_fps_lib
 )
-set_target_properties(deegen_rt PROPERTIES COMPILE_FLAGS " -DDEEGEN_POST_FUTAMURA_PROJECTION -target aarch64-unknown-linux-gnu ")
+set_target_properties(deegen_rt PROPERTIES COMPILE_FLAGS " -DDEEGEN_POST_FUTAMURA_PROJECTION ")
+#set_target_properties(deegen_rt PROPERTIES COMPILE_FLAGS " -DDEEGEN_POST_FUTAMURA_PROJECTION -fsanitize=address ")
 

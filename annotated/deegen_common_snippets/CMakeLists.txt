@@ -103,4 +103,4 @@ add_library(deegen_common_snippet_ir_target
   ${GENERATED_FILES_DIR}/deegen_common_snippet_ir_accessor.cpp
   ${generated_src_list}
 )
-set_target_properties(deegen_common_snippet_ir_target PROPERTIES COMPILE_FLAGS " -O3 -target aarch64-unknown-linux-gnu ")
+set_target_properties(deegen_common_snippet_ir_target PROPERTIES COMPILE_FLAGS " -O3 ")

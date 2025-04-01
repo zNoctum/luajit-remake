@@ -60,9 +60,7 @@ set(DEEGEN_UTILS_SRC
 )
 
 add_library(deegen_utils ${DEEGEN_UTILS_SRC})
-add_library(deegen_utils_target ${DEEGEN_UTILS_SRC})
 target_compile_options(deegen_utils PRIVATE -I/usr/include/c++/14)
-target_compile_options(deegen_utils_target PRIVATE -target aarch64-unknown-linux-gnu)
 
 # Build the main Futamura projection stage binary
 #
@@ -113,7 +111,4 @@ add_custom_command(
 
 add_library(deegen_interpreter_fn_entry_logic OBJECT
   ${deegen_interpreter_function_entry_sources}
-)
-target_compile_options(deegen_interpreter_fn_entry_logic PRIVATE
-  -target aarch64-linux-gnu
 )

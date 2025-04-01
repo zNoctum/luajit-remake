@@ -25,7 +25,7 @@ string(REPLACE ${DEBUG_OPTION} " " CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
 # "-Walloca" in EXTRA_CXX_FLAGS_FOR_LLVM_IR is required: LLVM seems to generate buggy assembly in GHC calling convention 
 # if variable-sized alloca is used. It failed to recognize that rbp is garbaged by the call.
 # 
-SET(EXTRA_CXX_FLAGS_FOR_LLVM_IR " -emit-llvm -fno-exceptions -Walloca -O3 -Xclang -disable-llvm-passes -target aarch64-unknown-linux-gnu ")
+SET(EXTRA_CXX_FLAGS_FOR_LLVM_IR " -emit-llvm -fno-exceptions -Walloca -O3 -Xclang -disable-llvm-passes ")
 
 # For CPP files to be compiled normally in this directory (and subdirectory), apply EXTRA_CXX_FLAGS_FOR_NORMAL_COMPILATION
 #

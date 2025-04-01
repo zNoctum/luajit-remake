@@ -28,17 +28,17 @@ deegen_enter_vm_from_c_impl:
 	#   dst 8 (x27): vmBasePointer
 	#   dst 9 (x28): tag register 2
 	#
-	# Push all the callee-saved registers in Linux C calling convention.
-	# Note that we happen to push 48 bytes, and we are branching to the callee.
-	# So the callee will see a 16-byte-aligned %rsp as expected. 
+	# Push all the callee-saved registers in AAPCS64.
+	# Note that we happen to push 96 bytes, and we are branching to the callee.
+	# So the callee will see a 16-byte-aligned sp as expected. 
 	#
-    sub sp, sp, #112
-    stp x19, x20, [sp, #0]
-    stp x21, x22, [sp, #16]
-    stp x23, x24, [sp, #32]
-    stp x25, x26, [sp, #48]
-    stp x27, x28, [sp, #64]
-    stp x29, x30, [sp, #80]
+	sub sp, sp,   #96
+	stp x19, x20, [sp, #0]
+	stp x21, x22, [sp, #16]
+	stp x23, x24, [sp, #32]
+	stp x25, x26, [sp, #48]
+	stp x27, x28, [sp, #64]
+	stp x29, x30, [sp, #80]
 	
 	# Set up the registers expected by the GHC calling convention callee
 	#
@@ -53,35 +53,35 @@ deegen_enter_vm_from_c_impl:
 	
 	# Move numArgs (x21)
 	#
-    mov     x21, x3
-
-    # Move vmBasePointer (x22)
-    #
-    mov     x22, x5
-
-    # set up tag register 1 (x23, x_int32Tag)
-    #
-    mov     x23, #281470681743360
-    movk    x23, #65531, lsl #48
+	mov     x21, x3
+	
+	# Move vmBasePointer (x22)
+	#
+	mov     x22, x5
+	
+	# set up tag register 1 (x23, x_int32Tag)
+	#
+	mov     x23, #281470681743360
+	movk    x23, #65531, lsl #48
 
 	# Move cb (x24)
 	#
 	mov     x24, x4
 
-    # Set isMustTail64 (x25) to 0
-    #
-    mov     x25, xzr
-
-    # Unused (x26)
-
-    # Unused (x27)
-
+	# Set isMustTail64 (x25) to 0
+	#
+	mov     x25, xzr
+	
+	# Unused (x26)
+	
+	# Unused (x27)
+	
 	# set up tag register 2 (x28, x_mivTag)
 	#
-    mov     x28, #-1125899906842497
-    movk    x28, #65535, lsl #32
+	mov     x28, #-1125899906842497
+	movk    x28, #65535, lsl #32
 
-	# Branch to callee (%r9)
+	# Branch to callee (x1)
 	# The stack is unbalanced yet, but it's fine because by design control must 
 	# eventually transfer to deegen_internal_use_only_exit_vm_epilogue, 
 	# which will restore the callee-saved registers, re-balance the stack,
@@ -118,20 +118,20 @@ deegen_internal_use_only_exit_vm_epilogue:
 	#   x1: numRets
 	#
 
-    # Set up the return values and return to C code
-    #
-    mov     x0, x24
-    mov     x1, x25
-
-	# Clean up the stack and restore the callee-saved registers of C calling convention
+	# Set up the return values and return to C code
 	#
-    ldp x29, x30, [sp, #80]
-    ldp x27, x28, [sp, #64]
-    ldp x25, x26, [sp, #48]
-    ldp x23, x24, [sp, #32]
-    ldp x21, x22, [sp, #16]
-    ldp x19, x20, [sp, #0]
-    add sp, sp, #112
+	mov     x0, x24
+	mov     x1, x25
+	
+	    # Clean up the stack and restore the callee-saved registers of C calling convention
+	    #
+	ldp x29, x30, [sp, #80]
+	ldp x27, x28, [sp, #64]
+	ldp x25, x26, [sp, #48]
+	ldp x23, x24, [sp, #32]
+	ldp x21, x22, [sp, #16]
+	ldp x19, x20, [sp, #0]
+	add sp, sp,   #96
 
 	ret
 	

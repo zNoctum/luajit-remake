@@ -194,6 +194,7 @@ void DeegenFunctionEntryLogicCreator::Run(llvm::LLVMContext& ctx)
     //
 
     ReleaseAssert(func->arg_size() == 16);
+    ReleaseAssert(func->getCallingConv() == CallingConv::GHC);
     Value* coroutineCtx = func->getArg(0);
     coroutineCtx->setName("coroCtx");
     Value* preFixupStackBase = func->getArg(1);

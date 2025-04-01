@@ -21,7 +21,7 @@ cd /
 LLVM_SRC_DIR=/llvm-src
 mkdir $LLVM_SRC_DIR
 cd $LLVM_SRC_DIR
-git clone -b llvmorg-15.0.3 --depth 1 https://github.com/llvm/llvm-project.git
+git clone --progress -b llvmorg-15.0.3 --depth 1 https://github.com/llvm/llvm-project.git
 
 # Apply our patch
 #
@@ -40,7 +40,7 @@ git apply llvm.patch
 #
 mkdir build
 cd $LLVM_SRC_DIR/llvm-project/build
-CC=clang-14 CXX=clang++-14 cmake -GNinja -DLLVM_ENABLE_DUMP=ON -DLLVM_ENABLE_RTTI=ON -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_PROJECTS="clang;compiler-rt" -DLLVM_TARGETS_TO_BUILD="X86;AArch64" ../llvm
+CC=clang-16 CXX=clang++-16 cmake -GNinja -DLLVM_ENABLE_DUMP=ON -DLLVM_ENABLE_RTTI=ON -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_PROJECTS="clang;compiler-rt" -DLLVM_TARGETS_TO_BUILD="X86;AArch64" ../llvm
 
 # Leave two CPUs idle so the system won't be irresponsible during the build
 #
@@ -49,7 +49,7 @@ REQUIRES_RTTI=1 ninja install
 
 # Having built Clang+LLVM, we can now uninstall the system Clang compiler
 #
-apt remove -y clang-14
+apt remove -y clang-16
 apt autoremove -y
 
 # It seems like after uninstalling the system Clang, the ld link is broken.. fix it

@@ -11,15 +11,17 @@ COPY ccache.conf /etc/ccache.conf
 #
 RUN apt update
 RUN apt-get install -y wget tar xz-utils sudo ninja-build ccache libtinfo-dev libz-dev lsb-release \
-                       software-properties-common gnupg libstdc++-14-dev binutils-gold software-properties-common \
-                       lld cmake binutils build-essential git python-is-python3 clang-14 libxml2 libxml2-dev libasan6 \
-                       gcc-12-aarch64-linux-gnu g++-12-aarch64-linux-gnu debootstrap qemu-user-static binfmt-support
+                       software-properties-common gnupg libstdc++-10-dev binutils-gold software-properties-common \
+                       lld cmake binutils build-essential git python-is-python3 clang-16 libxml2 libxml2-dev libasan6 \
+                       qemu-user-static binfmt-support
 
 RUN update-alternatives --install /usr/bin/ld ld /usr/bin/lld 120
 
 COPY build_docker_image.sh /build_docker_image.sh
 RUN bash build_docker_image.sh
 RUN rm /build_docker_image.sh
+
+RUN apt-get install -y g++ gcc
 
 USER u
 WORKDIR /home/u

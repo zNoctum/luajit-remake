@@ -204,12 +204,12 @@ if (op == 'make'):
     CreateDirIfNotExist(os.path.join(GetGeneratedDirFlavor(target), 'generated'))
     
     # generate the git commit hash CPP file
-    cmd = "docker run -e CC='clang' -e CXX='clang++' -v %s:/home/u/project %s:%s bash -c 'cd project && bash gen_git_hash.sh __generated__/%s/generated/git_commit_hash.cpp'" % (base_dir, docker_image_name, docker_image_tag, target)
+    cmd = "docker run -e CC='clang' -e CXX='clang++' -v %s:/home/u/project:Z %s:%s bash -c 'cd project && bash gen_git_hash.sh __generated__/%s/generated/git_commit_hash.cpp'" % (base_dir, docker_image_name, docker_image_tag, target)
     r = os.system(cmd)
     if (r != 0):
         sys.exit(r)
         
-    cmd = "docker run -e CC='clang' -e CXX='clang++' -v %s:/home/u/project %s:%s bash -c 'cd project/build/%s && cmake ../../ -DBUILD_FLAVOR=%s -GNinja'" % (base_dir, docker_image_name, docker_image_tag, target, target.upper())
+    cmd = "docker run -e CC='clang' -e CXX='clang++' -v %s:/home/u/project:Z %s:%s bash -c 'cd project/build/%s && cmake ../../ -DBUILD_FLAVOR=%s -GNinja'" % (base_dir, docker_image_name, docker_image_tag, target, target.upper())
     r = os.system(cmd)
     if (r != 0):
         sys.exit(r)
@@ -229,7 +229,7 @@ if (op == 'make'):
             if (num_cpus > 4):
                 parallelism = num_cpus - 2
         option = ("-j%s" % str(parallelism))
-    cmd = "docker run -e CC='clang' -e CXX='clang++' -v %s:/home/u/project %s:%s bash -c 'cd project/build/%s && ninja %s'" % (base_dir, docker_image_name, docker_image_tag, target, option)
+    cmd = "docker run -e CC='clang' -e CXX='clang++' -v %s:/home/u/project:Z %s:%s bash -c 'cd project/build/%s && ninja %s'" % (base_dir, docker_image_name, docker_image_tag, target, option)
     r = os.system(cmd)
     if (r != 0):
         sys.exit(r)
