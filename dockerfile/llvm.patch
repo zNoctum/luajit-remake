@@ -118,18 +118,55 @@ index 98adff107..76d408a2a 100644
      }
    } else if (const BlockAddress *BA = dyn_cast<BlockAddress>(V1)) {
 diff --git a/llvm/lib/Target/AArch64/AArch64CallingConvention.td b/llvm/lib/Target/AArch64/AArch64CallingConvention.td
-index c0da242a2..3f1e46ddf 100644
+index c0da242a2..05487f65b 100644
 --- a/llvm/lib/Target/AArch64/AArch64CallingConvention.td
 +++ b/llvm/lib/Target/AArch64/AArch64CallingConvention.td
-@@ -336,7 +336,7 @@ def CC_AArch64_GHC : CallingConv<[
+@@ -424,7 +424,7 @@ def CSR_AArch64_AllRegs
+                            (sequence "S%u", 0, 31), (sequence "D%u", 0, 31),
+                            (sequence "Q%u", 0, 31))>;
 
-   CCIfType<[v2f64], CCAssignToReg<[Q4, Q5]>>,
-   CCIfType<[f32], CCAssignToReg<[S8, S9, S10, S11]>>,
--  CCIfType<[f64], CCAssignToReg<[D12, D13, D14, D15]>>,
-+  CCIfType<[f64], CCAssignToReg<[D12, D13, D14, D15, D16, D17]>>,
+-def CSR_AArch64_NoRegs : CalleeSavedRegs<(add)>;
++def CSR_AArch64_NoRegs : CalleeSavedRegs<(add FP, LR)>;
 
-   // Promote i8/i16/i32 arguments to i64.
-   CCIfType<[i8, i16, i32], CCPromoteToType<i64>>,
+ def CSR_AArch64_RT_MostRegs :  CalleeSavedRegs<(add CSR_AArch64_AAPCS,
+                                                 (sequence "X%u", 9, 15))>;
+diff --git a/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp b/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
+index 78babdf9f..17d65da90 100644
+--- a/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
++++ b/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
+@@ -1467,10 +1467,6 @@ void AArch64FrameLowering::emitPrologue(MachineFunction &MF,
+     }
+   }
+
+-  // All calls are tail calls in GHC calling conv, and functions have no
+-  // prologue/epilogue.
+-  if (MF.getFunction().getCallingConv() == CallingConv::GHC)
+-    return;
+
+   // Set tagged base pointer to the requested stack slot.
+   // Ideally it should match SP value after prologue.
+@@ -1923,10 +1919,6 @@ void AArch64FrameLowering::emitEpilogue(MachineFunction &MF,
+                                : MFI.getStackSize();
+   AArch64FunctionInfo *AFI = MF.getInfo<AArch64FunctionInfo>();
+
+-  // All calls are tail calls in GHC calling conv, and functions have no
+-  // prologue/epilogue.
+-  if (MF.getFunction().getCallingConv() == CallingConv::GHC)
+-    return;
+
+   // How much of the stack used by incoming arguments this function is expected
+   // to restore in this particular epilogue.
+@@ -2948,10 +2940,6 @@ bool AArch64FrameLowering::restoreCalleeSavedRegisters(
+ void AArch64FrameLowering::determineCalleeSaves(MachineFunction &MF,
+                                                 BitVector &SavedRegs,
+                                                 RegScavenger *RS) const {
+-  // All calls are tail calls in GHC calling conv, and functions have no
+-  // prologue/epilogue.
+-  if (MF.getFunction().getCallingConv() == CallingConv::GHC)
+-    return;
+
+   TargetFrameLowering::determineCalleeSaves(MF, SavedRegs, RS);
+   const AArch64RegisterInfo *RegInfo = static_cast<const AArch64RegisterInfo *>(
 diff --git a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp
 index 06e21f90e..87a1885c8 100644
 --- a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp
