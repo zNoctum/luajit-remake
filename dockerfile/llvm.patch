@@ -118,9 +118,22 @@ index 98adff107..76d408a2a 100644
      }
    } else if (const BlockAddress *BA = dyn_cast<BlockAddress>(V1)) {
 diff --git a/llvm/lib/Target/AArch64/AArch64CallingConvention.td b/llvm/lib/Target/AArch64/AArch64CallingConvention.td
-index c0da242a2..05487f65b 100644
+index c0da242a2..a1fd5c85e 100644
 --- a/llvm/lib/Target/AArch64/AArch64CallingConvention.td
 +++ b/llvm/lib/Target/AArch64/AArch64CallingConvention.td
+@@ -334,9 +334,9 @@ def CC_AArch64_GHC : CallingConv<[
+   CCIfType<[v1i64, v2i32, v4i16, v8i8, v2f32], CCBitConvertToType<f64>>,
+   CCIfType<[v2i64, v4i32, v8i16, v16i8, v4f32, f128], CCBitConvertToType<v2f64>>,
+
+-  CCIfType<[v2f64], CCAssignToReg<[Q4, Q5]>>,
+-  CCIfType<[f32], CCAssignToReg<[S8, S9, S10, S11]>>,
+-  CCIfType<[f64], CCAssignToReg<[D12, D13, D14, D15]>>,
++  CCIfType<[v2f64], CCAssignToReg<[Q4, Q5, Q6, Q7, Q8, Q9, Q10]>>,
++  CCIfType<[f32],   CCAssignToReg<[S4, S5, S6, S7, S8, S9, S10]>>,
++  CCIfType<[f64],   CCAssignToReg<[D4, D5, D6, D7, D8, D9, D10]>>,
+
+   // Promote i8/i16/i32 arguments to i64.
+   CCIfType<[i8, i16, i32], CCPromoteToType<i64>>,
 @@ -424,7 +424,7 @@ def CSR_AArch64_AllRegs
                             (sequence "S%u", 0, 31), (sequence "D%u", 0, 31),
                             (sequence "Q%u", 0, 31))>;
@@ -131,9 +144,18 @@ index c0da242a2..05487f65b 100644
  def CSR_AArch64_RT_MostRegs :  CalleeSavedRegs<(add CSR_AArch64_AAPCS,
                                                  (sequence "X%u", 9, 15))>;
 diff --git a/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp b/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
-index 78babdf9f..17d65da90 100644
+index 78babdf9f..356c6de84 100644
 --- a/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
 +++ b/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
+@@ -288,7 +288,7 @@ static int64_t getArgumentStackToRestore(MachineFunction &MF,
+   } else {
+     // ... otherwise the amount to pop is *all* of the argument space,
+     // conveniently stored in the MachineFunctionInfo by
+-    // LowerFormalArguments. This will, of course, be zero for the C calling
++    // . This will, of course, be zero for the C calling
+     // convention.
+     ArgumentPopSize = AFI->getArgumentStackToRestore();
+   }
 @@ -1467,10 +1467,6 @@ void AArch64FrameLowering::emitPrologue(MachineFunction &MF,
      }
    }
