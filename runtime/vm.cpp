@@ -113,8 +113,6 @@ bool WARN_UNUSED VM::InitializeVMBase()
     //
     static_assert(!std::is_polymorphic_v<VM>, "must be not polymorphic");
 
-    m_self = reinterpret_cast<uintptr_t>(this);
-
     m_isEngineStartingTierBaselineJit = false;
     m_engineMaxTier = EngineMaxTier::Unrestricted;
 

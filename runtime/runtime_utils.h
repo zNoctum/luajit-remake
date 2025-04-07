@@ -10,6 +10,7 @@
 #include "spds_doubly_linked_list.h"
 #include "baseline_jit_codegen_helper.h"
 #include "bytecode_builder_utils.h"
+#include <arm_neon.h>
 
 class StackFrameHeader;
 class CodeBlock;
@@ -1232,7 +1233,14 @@ inline double WARN_UNUSED ModulusWithLuaSemantics_PUCLuaReference_5_1(double a, 
 //
 inline double WARN_UNUSED ALWAYS_INLINE ModulusWithLuaSemantics_5_1_NoSSE4(double a, double b)
 {
-    return std::fmod(a, b);
+    return a - floor(a / b) * b;
+    /*if (b == 0.0)
+        return std::numeric_limits<double>::quiet_NaN();
+    double tmp = a - vget_lane_f64(vrndm_f64(vcreate_f64(a / b)), 0) * b;
+    if (tmp == 0.0)
+        return 0.0;
+    else
+        return tmp;*/
 }
 
 inline double ALWAYS_INLINE WARN_UNUSED ModulusWithLuaSemantics(double a, double b)

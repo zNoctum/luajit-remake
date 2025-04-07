@@ -1,6 +1,7 @@
 #include "deegen_api.h"
 #include "lualib_tonumber_util.h"
 #include "runtime_utils.h"
+#include <arm_neon.h>
 
 // For math unary functions, get the first argument to the function as a double value and store it into 'argName',
 // throwing an error if the action cannot be performed ('funcName' is built into the error message)
@@ -428,7 +429,7 @@ DEEGEN_DEFINE_LIB_FUNC(math_sqrt)
 {
     MATH_LIB_UNARY_FN_GET_ARG(sqrt, arg);
     // TODO: replace with a more optimal version sqrt that doesn't set ERRNO.
-    Return(TValue::Create<tDouble>(std::sqrt(arg)));
+    Return(TValue::Create<tDouble>(vget_lane_f64(vsqrt_f64(vdup_n_f64(arg)), 0)));
 }
 
 // math.tan -- https://www.lua.org/manual/5.1/manual.html#pdf-math.tan

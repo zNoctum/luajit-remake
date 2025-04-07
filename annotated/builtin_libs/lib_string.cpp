@@ -106,12 +106,9 @@ DEEGEN_DEFINE_LIB_FUNC(string_char)
     uint8_t* ptr = reinterpret_cast<uint8_t*>(ss.Reserve(numArgs + 1));
     for (size_t i = 0; i < numArgs; i++)
     {
-        // If sb[i] is not a double, tvDoubleView will be NaN and i64 will never be within [0,255],
-        // so we will go to slow path that does the full check, as desired.
-        //
         double tvDoubleView = sb[i].ViewAsDouble();
         int64_t i64 = static_cast<int64_t>(tvDoubleView);
-        if (unlikely(i64 < 0 || i64 > 255))
+        if (unlikely(i64 < 0 || i64 > 255 || std::isnan(tvDoubleView)))
         {
             i64 = TryConvertValueToStringCharNumericalCode(tvDoubleView);
             if (unlikely(i64 < 0))

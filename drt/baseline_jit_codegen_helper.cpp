@@ -102,9 +102,9 @@ BaselineCodeBlock* NO_INLINE deegen_baseline_jit_do_codegen(CodeBlock* cb)
 
     // Determine the layout of the generated code:
     //     [ Data Section ] [ Fast Path ] [ Slow Path ]
-    // Note that however, the codegen may overwrite at most 7 more bytes after each section, so allocation must account for that.
+    // Note that however, the codegen may overwrite at most 4 more bytes after each section, so allocation must account for that.
     //
-    constexpr size_t x_maxBytesCodegenFnMayOverwrite = 7;
+    constexpr size_t x_maxBytesCodegenFnMayOverwrite = 4;
     size_t fastPathSectionOffset = dataSectionCodeLen;
     if (dataSectionCodeLen > 0)
     {
@@ -245,6 +245,7 @@ BaselineCodeBlock* NO_INLINE deegen_baseline_jit_do_codegen(CodeBlock* cb)
     //
     if (numLateCondBrPatches > 0)
     {
+        std::cout << "LateCondBrPatches exist!!!" << std::endl;
         uint32_t cachedDstBytecodePtr32 = condBrLatePatchList[0].m_dstBytecodePtrLow32bits - 1;
         size_t cachedBytecodeIndexLookupResult = 0;
         for (size_t i = 0; i < numLateCondBrPatches; i++)
@@ -275,7 +276,7 @@ BaselineCodeBlock* NO_INLINE deegen_baseline_jit_do_codegen(CodeBlock* cb)
     }
 
     // There is a 'x_maxBytesCodegenFnMayOverwrite' byte gap between fast path and slow path
-    // Populate ud2 + N * nop for sanity and to avoid breaking debugger disassembler.
+    // Populate udf #0 for sanity and to avoid breaking debugger disassembler.
     //
     // And also do the same at the end of slow path, so that the full [jitCodeEntry, jitRegionEnd) recorded
     // in BaselineCodeBlock is filled with disassemblable instructions
@@ -283,17 +284,14 @@ BaselineCodeBlock* NO_INLINE deegen_baseline_jit_do_codegen(CodeBlock* cb)
     {
         auto populateCodeGap = [](uint8_t* buf) ALWAYS_INLINE
         {
-            static_assert(x_maxBytesCodegenFnMayOverwrite >= 2 /*length of ud2 instruction*/);
-            // ud2: 0x0f, 0x0b
+            static_assert(x_maxBytesCodegenFnMayOverwrite >= 4 /*length of udf instruction*/);
+            static_assert(x_maxBytesCodegenFnMayOverwrite % 4 == 0);
+            // udf #0: 0x00, 0x00, 0x00, 0x00
             //
-            buf[0] = 0x0f;
-            buf[1] = 0x0b;
-            // nop: 0x90
-            //
-            for (size_t i = 2; i < x_maxBytesCodegenFnMayOverwrite; i++)
-            {
-                buf[i] = 0x90;
-            }
+            buf[0] = 0x00;
+            buf[1] = 0x00;
+            buf[2] = 0x00;
+            buf[3] = 0x00;
         };
 
         populateCodeGap(fastPathSecTrueEnd);

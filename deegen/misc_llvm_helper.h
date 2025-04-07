@@ -624,7 +624,7 @@ inline void CopyFunctionAttributes(llvm::Function* dstFunc, llvm::Function* srcF
     constexpr const char* featuresToCopy[] = {
         "target-cpu",
         "target-features",
-        //"tune-cpu",
+        "tune-cpu",
         "frame-pointer",
         //"min-legal-vector-width",
         "no-trapping-math",
@@ -1006,6 +1006,31 @@ inline llvm::BinaryOperator* WARN_UNUSED CreateArithmeticBinaryOp(llvm::BinaryOp
 inline llvm::Instruction* WARN_UNUSED CreateAdd(llvm::Value* lhs, llvm::Value* rhs, bool mustHaveNoUnsignedWrap = false, bool mustHaveNoSignedWrap = false)
 {
     return CreateArithmeticBinaryOp(llvm::BinaryOperator::BinaryOps::Add, lhs, rhs, mustHaveNoUnsignedWrap, mustHaveNoSignedWrap);
+}
+
+inline llvm::Instruction* WARN_UNUSED CreateAnd(llvm::Value* lhs, llvm::Value* rhs)
+{
+    return CreateArithmeticBinaryOp(llvm::BinaryOperator::BinaryOps::And, lhs, rhs, false, false);
+}
+
+inline llvm::Instruction* WARN_UNUSED CreateOr(llvm::Value* lhs, llvm::Value* rhs)
+{
+    return CreateArithmeticBinaryOp(llvm::BinaryOperator::BinaryOps::Or, lhs, rhs, false, false);
+}
+
+inline llvm::Instruction* WARN_UNUSED CreateShr(llvm::Value* lhs, llvm::Value* rhs)
+{
+    return CreateArithmeticBinaryOp(llvm::BinaryOperator::BinaryOps::LShr, lhs, rhs, false, false);
+}
+
+inline llvm::Instruction* WARN_UNUSED CreateAShr(llvm::Value* lhs, llvm::Value* rhs)
+{
+    return CreateArithmeticBinaryOp(llvm::BinaryOperator::BinaryOps::AShr, lhs, rhs, false, false);
+}
+
+inline llvm::Instruction* WARN_UNUSED CreateShl(llvm::Value* lhs, llvm::Value* rhs)
+{
+    return CreateArithmeticBinaryOp(llvm::BinaryOperator::BinaryOps::Shl, lhs, rhs, false, false);
 }
 
 inline llvm::Instruction* WARN_UNUSED CreateSignedAddNoOverflow(llvm::Value* lhs, llvm::Value* rhs, llvm::Instruction* insertBefore = nullptr)
@@ -1645,7 +1670,7 @@ inline int WARN_UNUSED StoiOrFail(const std::string& s)
 }
 
 // Emit a memcpy_inline.
-// If 'mustBeExact' is false (which is the default!), this function will be allowed to overwrite at most 7 bytes (so that we can have less instructions)
+// If 'mustBeExact' is false (which is the default!), this function will be allowed to overwrite at most 4 bytes (so that we can have less instructions)
 // The caller is responsible for accounting for the extra bytes when doing the allocation in such case.
 //
 inline void EmitCopyLogicForBaselineJitCodeGen(llvm::Module* module,
@@ -1723,7 +1748,7 @@ inline llvm::Instruction* WARN_UNUSED FindFirstNonAllocaInstInEntryBB(llvm::Func
 //
 inline void FillAddressRangeWithX64MultiByteNOPs(uint8_t* addr, size_t length)
 {
-    static constexpr uint8_t nop4[] = { 0x1F, 0x20, 0x03, 0xd5 };
+    static constexpr uint8_t nop4[] = { 0x1F, 0x20, 0x03, 0xD5 };
 
     ReleaseAssert(length % 4 == 0);
 
@@ -1747,8 +1772,17 @@ struct X64PatchableJumpUtil
         GetElementPtrInst* ptr = GetElementPtrInst::CreateInBounds(llvm_type_of<uint8_t>(ctx), jmpEndAddr,
                                                                    { CreateLLVMConstantInt<uint64_t>(ctx, static_cast<uint64_t>(-4)) }, "", insertAtEnd);
         Value* val32 = new LoadInst(llvm_type_of<uint32_t>(ctx), ptr, "", false /*isVolatile*/, Align(1), insertAtEnd);
-        Value* val64 = new SExtInst(val32, llvm_type_of<uint64_t>(ctx), "", insertAtEnd);
-        GetElementPtrInst* dest = GetElementPtrInst::CreateInBounds(llvm_type_of<uint8_t>(ctx), jmpEndAddr, { val64 }, "", insertAtEnd);
+	Instruction* masked32 = CreateAnd(val32, CreateLLVMConstantInt<uint32_t>(ctx, static_cast<uint32_t>(0x3FFFFFF)));
+        insertAtEnd->getInstList().push_back(masked32);
+	Instruction* shl32 = CreateShl(masked32, CreateLLVMConstantInt<uint32_t>(ctx, static_cast<uint32_t>(6)));
+        insertAtEnd->getInstList().push_back(shl32);
+	Instruction* shr32 = CreateAShr(shl32, CreateLLVMConstantInt<uint32_t>(ctx, static_cast<uint32_t>(4)));
+        insertAtEnd->getInstList().push_back(shr32);
+        Value* val64 = new SExtInst(shr32, llvm_type_of<uint64_t>(ctx), "", insertAtEnd);
+	Instruction* adjusted64 = CreateAdd(val64, CreateLLVMConstantInt<uint64_t>(ctx, static_cast<uint64_t>(4)));
+        insertAtEnd->getInstList().push_back(adjusted64);
+        GetElementPtrInst* dest = GetElementPtrInst::CreateInBounds(llvm_type_of<uint8_t>(ctx), jmpEndAddr,
+                                                                    { adjusted64 }, "", insertAtEnd);
         return dest;
     }
 
@@ -1760,12 +1794,20 @@ struct X64PatchableJumpUtil
         ReleaseAssert(llvm_value_has_type<void*>(newDest));
         Value* jmpEndAddr64 = new PtrToIntInst(jmpEndAddr, llvm_type_of<uint64_t>(ctx), "", insertAtEnd);
         Value* newDest64 = new PtrToIntInst(newDest, llvm_type_of<uint64_t>(ctx), "", insertAtEnd);
-        Instruction* diff = CreateSub(newDest64, jmpEndAddr64);
+	Instruction* jmpAddr64 = CreateSub(jmpEndAddr64, CreateLLVMConstantInt<uint64_t>(ctx, static_cast<uint64_t>(4)));
+        insertAtEnd->getInstList().push_back(jmpAddr64);
+        Instruction* diff = CreateSub(newDest64, jmpAddr64);
         insertAtEnd->getInstList().push_back(diff);
         Value* diff32 = new TruncInst(diff, llvm_type_of<uint32_t>(ctx), "", insertAtEnd);
+	Instruction* adjusted32 = CreateShr(diff32, CreateLLVMConstantInt<uint32_t>(ctx, static_cast<uint32_t>(2)));
+        insertAtEnd->getInstList().push_back(adjusted32);
+	Instruction* masked32 = CreateAnd(adjusted32, CreateLLVMConstantInt<uint32_t>(ctx, static_cast<uint32_t>(0x03FFFFFF)));
+        insertAtEnd->getInstList().push_back(masked32);
+	Instruction* branch32 = CreateOr(masked32,    CreateLLVMConstantInt<uint32_t>(ctx, static_cast<uint32_t>(0x14000000)));
+        insertAtEnd->getInstList().push_back(branch32);
         GetElementPtrInst* ptr = GetElementPtrInst::CreateInBounds(llvm_type_of<uint8_t>(ctx), jmpEndAddr,
                                                                    { CreateLLVMConstantInt<uint64_t>(ctx, static_cast<uint64_t>(-4)) }, "", insertAtEnd);
-        new StoreInst(diff32, ptr, false /*isVolatile*/, Align(1), insertAtEnd);
+        new StoreInst(branch32, ptr, false /*isVolatile*/, Align(1), insertAtEnd);
     }
 };
 

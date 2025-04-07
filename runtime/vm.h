@@ -933,7 +933,6 @@ private:
     uintptr_t VMBaseAddress() const
     {
         uintptr_t result = reinterpret_cast<uintptr_t>(this);
-        assert(result == m_self);
         return result;
     }
 
@@ -1032,7 +1031,7 @@ private:
 
     // must be first member, stores the value of static_cast<CRTP*>(this)
     //
-    uintptr_t m_self;
+    //uintptr_t m_self;
 
     bool m_isEngineStartingTierBaselineJit;
     EngineMaxTier m_engineMaxTier;
@@ -1040,20 +1039,20 @@ private:
     alignas(64) SpdsAllocImpl<VM, false /*isTempAlloc*/> m_executionThreadSpdsAlloc;
 
     // user heap region grows from high address to low address
-    // highest physically mapped address of the user heap region (offsets from m_self)
+    // highest physically mapped address of the user heap region (offsets from this)
     //
     int64_t m_userHeapPtrLimit;
 
-    // lowest logically used address of the user heap region (offsets from m_self)
+    // lowest logically used address of the user heap region (offsets from this)
     //
     int64_t m_userHeapCurPtr;
 
     // system heap region grows from low address to high address
-    // lowest physically unmapped address of the system heap region (offsets from m_self)
+    // lowest physically unmapped address of the system heap region (offsets from this)
     //
     uint32_t m_systemHeapPtrLimit;
 
-    // lowest logically available address of the system heap region (offsets from m_self)
+    // lowest logically available address of the system heap region (offsets from this)
     //
     uint32_t m_systemHeapCurPtr;
 

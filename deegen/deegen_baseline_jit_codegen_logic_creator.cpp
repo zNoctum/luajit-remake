@@ -72,17 +72,17 @@ struct BaselineJitCodegenFnProto
         return FunctionType::get(
             llvm_type_of<void>(ctx) /*result*/,
             {
-                /*R13*/ llvm_type_of<void*>(ctx),       // Bytecode Ptr
-                /*RBP*/ llvm_type_of<void*>(ctx),       // CondBrPatchRecord Ptr
-                /*R12*/ llvm_type_of<void*>(ctx),       // JitDataSec Ptr
-                /*RBX*/ llvm_type_of<uint64_t>(ctx),    // SlowPathDataOffset
-                /*R14*/ llvm_type_of<void*>(ctx),       // SlowPathDataIndex Ptr
-                /*RSI*/ llvm_type_of<uint64_t>(ctx),    // BaselineCodeBlock lower-32bits
-                /*RDI*/ llvm_type_of<void*>(ctx),       // Control Struct Ptr (used in debug only, undefined in non-debug build to save a precious register)
-                /*R8*/  llvm_type_of<void*>(ctx),       // JitFastPath Ptr
-                /*R9*/  llvm_type_of<void*>(ctx),       // JitSlowPath Ptr
-                /*R15*/ llvm_type_of<void*>(ctx),       // SlowPathData Ptr
-                /*XMM1-6, unused*/
+                /*R13,X19*/ llvm_type_of<void*>(ctx),       // Bytecode Ptr
+                /*RBP,X20*/ llvm_type_of<void*>(ctx),       // CondBrPatchRecord Ptr
+                /*R12,X21*/ llvm_type_of<void*>(ctx),       // JitDataSec Ptr
+                /*RBX,X22*/ llvm_type_of<uint64_t>(ctx),    // SlowPathDataOffset
+                /*R14,X23*/ llvm_type_of<void*>(ctx),       // SlowPathDataIndex Ptr
+                /*RSI,X24*/ llvm_type_of<uint64_t>(ctx),    // BaselineCodeBlock lower-32bits
+                /*RDI,X25*/ llvm_type_of<void*>(ctx),       // Control Struct Ptr (used in debug only, undefined in non-debug build to save a precious register)
+                /*R8, X26*/ llvm_type_of<void*>(ctx),       // JitFastPath Ptr
+                /*R9, X27*/ llvm_type_of<void*>(ctx),       // JitSlowPath Ptr
+                /*R15,X28*/ llvm_type_of<void*>(ctx),       // SlowPathData Ptr
+                /*XMM1-6, D1-6, unused*/
                 llvm_type_of<double>(ctx),
                 llvm_type_of<double>(ctx),
                 llvm_type_of<double>(ctx),

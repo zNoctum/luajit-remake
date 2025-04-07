@@ -22,7 +22,7 @@ deegen_enter_vm_from_c_impl:
 	#   dst 2 (x21): numArgs
 	#   dst 3 (x22): cb
 	#   dst 4 (x23): tag register 1
-	#   dst 5 (x24): (unused)
+	#   dst 5 (x24): (unused)disas
 	#   dst 6 (x25): isMustTail64 (should be 0)
 	#   dst 7 (x26): (unused)
 	#   dst 8 (x27): vmBasePointer
@@ -87,7 +87,7 @@ deegen_enter_vm_from_c_impl:
 	# which will restore the callee-saved registers, re-balance the stack,
 	# and return control to C
 	#
-	ret x1
+	br x1
 	udf #0
 	
 .Lfunc_end_deegen_enter_vm_from_c_impl:

@@ -2089,10 +2089,10 @@ static void SetupCallIcSmcRegionInitialInstructions(DeegenStencil& mainLogicSten
         ReleaseAssert(smcRegionSize >= 4);
         std::vector<uint8_t> byteSeq;
         byteSeq.resize(smcRegionSize, 0);
-        byteSeq[0] = 0x04;  // b instruction
+        byteSeq[0] = 0x00;  // b instruction
         byteSeq[1] = 0x00;
         byteSeq[2] = 0x00;
-        byteSeq[3] = 0x00;
+        byteSeq[3] = 0x14;
         FillAddressRangeWithX64MultiByteNOPs(byteSeq.data() + 4, byteSeq.size() - 4);
 
         for (size_t i = 0; i < smcRegionSize; i++)
