@@ -190,7 +190,7 @@ index 78babdf9f..356c6de84 100644
    TargetFrameLowering::determineCalleeSaves(MF, SavedRegs, RS);
    const AArch64RegisterInfo *RegInfo = static_cast<const AArch64RegisterInfo *>(
 diff --git a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp
-index 06e21f90e..31a7f7867 100644
+index 06e21f90e..84cf49af4 100644
 --- a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp
 +++ b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp
 @@ -6226,6 +6226,7 @@ static bool mayTailCallThisCC(CallingConv::ID CC) {
@@ -216,7 +216,7 @@ index 06e21f90e..31a7f7867 100644
        Callee = DAG.getNode(AArch64ISD::LOADgot, DL, PtrVT, Callee);
 -    } else {
 +    } else if (getTargetMachine().getCodeModel() == CodeModel::Large) {
-+      Callee = getAddrLarge(S, DAG, 0);
++      Callee = getAddrLarge(G, DAG, 0);
 +    }else {
        const char *Sym = S->getSymbol();
        Callee = DAG.getTargetExternalSymbol(Sym, PtrVT, 0);
