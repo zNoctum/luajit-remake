@@ -190,7 +190,7 @@ index 78babdf9f..356c6de84 100644
    TargetFrameLowering::determineCalleeSaves(MF, SavedRegs, RS);
    const AArch64RegisterInfo *RegInfo = static_cast<const AArch64RegisterInfo *>(
 diff --git a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp
-index 06e21f90e..266064589 100644
+index 06e21f90e..e100331f4 100644
 --- a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp
 +++ b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp
 @@ -6226,6 +6226,7 @@ static bool mayTailCallThisCC(CallingConv::ID CC) {
@@ -210,23 +210,29 @@ index 06e21f90e..266064589 100644
      } else {
        const GlobalValue *GV = G->getGlobal();
        Callee = DAG.getTargetGlobalAddress(GV, DL, PtrVT, 0, 0);
-@@ -6857,6 +6860,15 @@ AArch64TargetLowering::LowerCall(CallLoweringInfo &CLI,
+@@ -6857,6 +6860,21 @@ AArch64TargetLowering::LowerCall(CallLoweringInfo &CLI,
        const char *Sym = S->getSymbol();
        Callee = DAG.getTargetExternalSymbol(Sym, PtrVT, AArch64II::MO_GOT);
        Callee = DAG.getNode(AArch64ISD::LOADgot, DL, PtrVT, Callee);
 +    } else if (getTargetMachine().getCodeModel() == CodeModel::Large) {
 +      const char *Sym = S->getSymbol();
 +      const unsigned char MO_NC = AArch64II::MO_NC;
-+      Callee = DAG.getNode(
-+          AArch64ISD::WrapperLarge, DL, PtrVT,
-+          DAG.getTargetExternalSymbol(Sym, PtrVT, AArch64II::MO_G3),
-+          DAG.getTargetExternalSymbol(Sym, PtrVT, AArch64II::MO_G2 | MO_NC),
-+          DAG.getTargetExternalSymbol(Sym, PtrVT, AArch64II::MO_G1 | MO_NC),
-+          DAG.getTargetExternalSymbol(Sym, PtrVT, AArch64II::MO_G0 | MO_NC));
++      Callee = SDValue(DAG.getMachineNode(AArch64::MOVZXi, DL, PtrVT,
++                                  DAG.getTargetExternalSymbol(Sym, PtrVT, AArch64II::MO_G3),
++                                  DAG.getTargetConstant(48, DL, MVT::i32)), 0);
++      Callee = SDValue(DAG.getMachineNode(AArch64::MOVKXi, DL, PtrVT, Callee,
++                                  DAG.getTargetExternalSymbol(Sym, PtrVT, AArch64II::MO_G2 | MO_NC),
++                                  DAG.getTargetConstant(32, DL, MVT::i32)), 0);
++      Callee = SDValue(DAG.getMachineNode(AArch64::MOVKXi, DL, PtrVT, Callee,
++                                          DAG.getTargetExternalSymbol(Sym, PtrVT, AArch64II::MO_G1 | MO_NC),
++                                          DAG.getTargetConstant(16, DL, MVT::i32)), 0);
++      Callee = SDValue(DAG.getMachineNode(AArch64::MOVKXi, DL, PtrVT, Callee,
++                                          DAG.getTargetExternalSymbol(Sym, PtrVT, AArch64II::MO_G0 | MO_NC),
++                                          DAG.getTargetConstant(0, DL, MVT::i32)), 0);
      } else {
        const char *Sym = S->getSymbol();
        Callee = DAG.getTargetExternalSymbol(Sym, PtrVT, 0);
-@@ -7142,6 +7154,47 @@ SDValue AArch64TargetLowering::getAddrLarge(NodeTy *N, SelectionDAG &DAG,
+@@ -7142,6 +7160,47 @@ SDValue AArch64TargetLowering::getAddrLarge(NodeTy *N, SelectionDAG &DAG,
        getTargetNode(N, Ty, DAG, AArch64II::MO_G0 | MO_NC | Flags));
  }
 
@@ -274,7 +280,7 @@ index 06e21f90e..266064589 100644
  // (addlow (adrp %hi(sym)) %lo(sym))
  template <class NodeTy>
  SDValue AArch64TargetLowering::getAddr(NodeTy *N, SelectionDAG &DAG,
-@@ -7184,7 +7237,9 @@ SDValue AArch64TargetLowering::LowerGlobalAddress(SDValue Op,
+@@ -7184,7 +7243,9 @@ SDValue AArch64TargetLowering::LowerGlobalAddress(SDValue Op,
    }
 
    SDValue Result;
