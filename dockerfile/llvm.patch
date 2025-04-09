@@ -144,10 +144,22 @@ index c0da242a2..a1fd5c85e 100644
  def CSR_AArch64_RT_MostRegs :  CalleeSavedRegs<(add CSR_AArch64_AAPCS,
                                                  (sequence "X%u", 9, 15))>;
 diff --git a/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp b/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
-index 78babdf9f..356c6de84 100644
+index 78babdf9f..dcfc6f280 100644
 --- a/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
 +++ b/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
-@@ -288,7 +288,7 @@ static int64_t getArgumentStackToRestore(MachineFunction &MF,
+@@ -257,6 +257,11 @@ cl::opt<bool> EnableHomogeneousPrologEpilog(
+     cl::desc("Emit homogeneous prologue and epilogue for the size "
+              "optimization (default = off)"));
+
++static cl::opt<bool> GenerateDeegenStencilCode(
++    "generate-deegen-stencil-code", cl::init(false), cl::Hidden,
++    cl::desc("This switches the saving of LR and FP off for the GHC calling convention"));
++
++
+ STATISTIC(NumRedZoneFunctions, "Number of functions using red zone");
+
+ /// Returns how much of the incoming argument stack area (in bytes) we should
+@@ -288,7 +293,7 @@ static int64_t getArgumentStackToRestore(MachineFunction &MF,
    } else {
      // ... otherwise the amount to pop is *all* of the argument space,
      // conveniently stored in the MachineFunctionInfo by
@@ -156,41 +168,35 @@ index 78babdf9f..356c6de84 100644
      // convention.
      ArgumentPopSize = AFI->getArgumentStackToRestore();
    }
-@@ -1467,10 +1467,6 @@ void AArch64FrameLowering::emitPrologue(MachineFunction &MF,
-     }
-   }
+@@ -1469,7 +1474,7 @@ void AArch64FrameLowering::emitPrologue(MachineFunction &MF,
 
--  // All calls are tail calls in GHC calling conv, and functions have no
--  // prologue/epilogue.
+   // All calls are tail calls in GHC calling conv, and functions have no
+   // prologue/epilogue.
 -  if (MF.getFunction().getCallingConv() == CallingConv::GHC)
--    return;
++  if (MF.getFunction().getCallingConv() == CallingConv::GHC && GenerateDeegenStencilCode)
+     return;
 
    // Set tagged base pointer to the requested stack slot.
-   // Ideally it should match SP value after prologue.
-@@ -1923,10 +1919,6 @@ void AArch64FrameLowering::emitEpilogue(MachineFunction &MF,
-                                : MFI.getStackSize();
-   AArch64FunctionInfo *AFI = MF.getInfo<AArch64FunctionInfo>();
+@@ -1925,7 +1930,7 @@ void AArch64FrameLowering::emitEpilogue(MachineFunction &MF,
 
--  // All calls are tail calls in GHC calling conv, and functions have no
--  // prologue/epilogue.
+   // All calls are tail calls in GHC calling conv, and functions have no
+   // prologue/epilogue.
 -  if (MF.getFunction().getCallingConv() == CallingConv::GHC)
--    return;
++  if (MF.getFunction().getCallingConv() == CallingConv::GHC && GenerateDeegenStencilCode)
+     return;
 
    // How much of the stack used by incoming arguments this function is expected
-   // to restore in this particular epilogue.
-@@ -2948,10 +2940,6 @@ bool AArch64FrameLowering::restoreCalleeSavedRegisters(
- void AArch64FrameLowering::determineCalleeSaves(MachineFunction &MF,
-                                                 BitVector &SavedRegs,
+@@ -2950,7 +2955,7 @@ void AArch64FrameLowering::determineCalleeSaves(MachineFunction &MF,
                                                  RegScavenger *RS) const {
--  // All calls are tail calls in GHC calling conv, and functions have no
--  // prologue/epilogue.
+   // All calls are tail calls in GHC calling conv, and functions have no
+   // prologue/epilogue.
 -  if (MF.getFunction().getCallingConv() == CallingConv::GHC)
--    return;
++  if (MF.getFunction().getCallingConv() == CallingConv::GHC && GenerateDeegenStencilCode)
+     return;
 
    TargetFrameLowering::determineCalleeSaves(MF, SavedRegs, RS);
-   const AArch64RegisterInfo *RegInfo = static_cast<const AArch64RegisterInfo *>(
 diff --git a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp
-index 06e21f90e..e100331f4 100644
+index 06e21f90e..a9c9a10d8 100644
 --- a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp
 +++ b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp
 @@ -6226,6 +6226,7 @@ static bool mayTailCallThisCC(CallingConv::ID CC) {
@@ -210,29 +216,25 @@ index 06e21f90e..e100331f4 100644
      } else {
        const GlobalValue *GV = G->getGlobal();
        Callee = DAG.getTargetGlobalAddress(GV, DL, PtrVT, 0, 0);
-@@ -6857,6 +6860,21 @@ AArch64TargetLowering::LowerCall(CallLoweringInfo &CLI,
+@@ -6857,6 +6860,17 @@ AArch64TargetLowering::LowerCall(CallLoweringInfo &CLI,
        const char *Sym = S->getSymbol();
        Callee = DAG.getTargetExternalSymbol(Sym, PtrVT, AArch64II::MO_GOT);
        Callee = DAG.getNode(AArch64ISD::LOADgot, DL, PtrVT, Callee);
 +    } else if (getTargetMachine().getCodeModel() == CodeModel::Large) {
 +      const char *Sym = S->getSymbol();
 +      const unsigned char MO_NC = AArch64II::MO_NC;
++
++      // This should be safe
 +      Callee = SDValue(DAG.getMachineNode(AArch64::MOVZXi, DL, PtrVT,
-+                                  DAG.getTargetExternalSymbol(Sym, PtrVT, AArch64II::MO_G3),
-+                                  DAG.getTargetConstant(48, DL, MVT::i32)), 0);
-+      Callee = SDValue(DAG.getMachineNode(AArch64::MOVKXi, DL, PtrVT, Callee,
-+                                  DAG.getTargetExternalSymbol(Sym, PtrVT, AArch64II::MO_G2 | MO_NC),
-+                                  DAG.getTargetConstant(32, DL, MVT::i32)), 0);
-+      Callee = SDValue(DAG.getMachineNode(AArch64::MOVKXi, DL, PtrVT, Callee,
-+                                          DAG.getTargetExternalSymbol(Sym, PtrVT, AArch64II::MO_G1 | MO_NC),
-+                                          DAG.getTargetConstant(16, DL, MVT::i32)), 0);
++                                  DAG.getTargetExternalSymbol(Sym, PtrVT, AArch64II::MO_G1),
++                                  DAG.getTargetConstant(16, DL, MVT::i32)), 0);
 +      Callee = SDValue(DAG.getMachineNode(AArch64::MOVKXi, DL, PtrVT, Callee,
 +                                          DAG.getTargetExternalSymbol(Sym, PtrVT, AArch64II::MO_G0 | MO_NC),
 +                                          DAG.getTargetConstant(0, DL, MVT::i32)), 0);
      } else {
        const char *Sym = S->getSymbol();
        Callee = DAG.getTargetExternalSymbol(Sym, PtrVT, 0);
-@@ -7142,6 +7160,47 @@ SDValue AArch64TargetLowering::getAddrLarge(NodeTy *N, SelectionDAG &DAG,
+@@ -7142,6 +7156,47 @@ SDValue AArch64TargetLowering::getAddrLarge(NodeTy *N, SelectionDAG &DAG,
        getTargetNode(N, Ty, DAG, AArch64II::MO_G0 | MO_NC | Flags));
  }
 
@@ -280,7 +282,7 @@ index 06e21f90e..e100331f4 100644
  // (addlow (adrp %hi(sym)) %lo(sym))
  template <class NodeTy>
  SDValue AArch64TargetLowering::getAddr(NodeTy *N, SelectionDAG &DAG,
-@@ -7184,7 +7243,9 @@ SDValue AArch64TargetLowering::LowerGlobalAddress(SDValue Op,
+@@ -7184,7 +7239,9 @@ SDValue AArch64TargetLowering::LowerGlobalAddress(SDValue Op,
    }
 
    SDValue Result;
