@@ -31,8 +31,6 @@ void DeegenCallIcLogicCreator::EmitGenericGetCallTargetLogic(DeegenBytecodeImplC
 
     LLVMContext &ctx = functionObject->getContext();
 
-    // we need to do this because llvm changes the internal representation of the return type for reasons, WHY?????
-    //
     if (llvm_value_has_type<uint64_t>(calleeCb))
         calleeCb = new IntToPtrInst(calleeCb, llvm_type_of<void*>(ctx), "", insertBefore);
     if (llvm_value_has_type<uint64_t>(codePointer))

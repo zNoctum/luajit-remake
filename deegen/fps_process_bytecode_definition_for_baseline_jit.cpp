@@ -394,7 +394,7 @@ void FPS_ProcessBytecodeDefinitionForBaselineJit()
     TransactionalOutputFile asmOutFile(cl_assemblyOutputFilename);
 
     {
-        std::string contents = CompileLLVMModuleToAssemblyFile(module.get(), llvm::Reloc::Static, llvm::CodeModel::Large);
+        std::string contents = CompileLLVMModuleToAssemblyFile(module.get(), llvm::Reloc::Static, llvm::CodeModel::Small);
         asmOutFile.write(contents);
     }
 
@@ -556,7 +556,7 @@ void FPS_GenerateDispatchTableAndBytecodeTraitTableForBaselineJit()
     }
 
     std::unique_ptr<llvm::Module> helperLogicModule = GenerateBaselineJitHelperLogic(ctx);
-    std::string asmFileContents = CompileLLVMModuleToAssemblyFile(helperLogicModule.get(), llvm::Reloc::Static, llvm::CodeModel::Large);
+    std::string asmFileContents = CompileLLVMModuleToAssemblyFile(helperLogicModule.get(), llvm::Reloc::Static, llvm::CodeModel::Small);
 
     ReleaseAssert(cl_assemblyOutputFilename != "");
     TransactionalOutputFile asmOutputFile(cl_assemblyOutputFilename);

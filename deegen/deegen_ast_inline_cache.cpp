@@ -3486,18 +3486,18 @@ AstInlineCache::BaselineJitCodegenResult WARN_UNUSED AstInlineCache::CreateJitIc
     //
     if (isCodegenForInlineSlab)
     {
-        // We are generating the inline slab, so the SMC region is in the initial jmp + nop form
+        // We are generating the inline slab, so the SMC region is in the initial b + nop form
         //
         ReleaseAssert(inlineSlabInfo.m_hasInlineSlab);
         patchableJmpEndAddr = GetElementPtrInst::CreateInBounds(llvm_type_of<uint8_t>(ctx), mainLogicFastPath,
-                                                                { CreateLLVMConstantInt<uint64_t>(ctx, inlineSlabInfo.m_smcRegionOffset + 5) }, "", bb);
+                                                                { CreateLLVMConstantInt<uint64_t>(ctx, inlineSlabInfo.m_smcRegionOffset + 4) }, "", bb);
     }
     else if (!inlineSlabInfo.m_hasInlineSlab)
     {
         // No inline slab is possible for this IC, no need to check anything. The SMC region is in the initial jmp + nop form
         //
         patchableJmpEndAddr = GetElementPtrInst::CreateInBounds(llvm_type_of<uint8_t>(ctx), mainLogicFastPath,
-                                                                { CreateLLVMConstantInt<uint64_t>(ctx, inlineSlabInfo.m_smcRegionOffset + 5) }, "", bb);
+                                                                { CreateLLVMConstantInt<uint64_t>(ctx, inlineSlabInfo.m_smcRegionOffset + 4) }, "", bb);
     }
     else
     {
@@ -3525,7 +3525,7 @@ AstInlineCache::BaselineJitCodegenResult WARN_UNUSED AstInlineCache::CreateJitIc
         Value* patchableJumpEndOffset = SelectInst::Create(
             isInlineSlabUsed,
             CreateLLVMConstantInt<uint64_t>(ctx, inlineSlabInfo.m_inlineSlabPatchableJumpEndOffsetInFastPath),
-            CreateLLVMConstantInt<uint64_t>(ctx, inlineSlabInfo.m_smcRegionOffset + 5),
+            CreateLLVMConstantInt<uint64_t>(ctx, inlineSlabInfo.m_smcRegionOffset + 4),
             "",
             bb);
 
@@ -3546,7 +3546,7 @@ AstInlineCache::BaselineJitCodegenResult WARN_UNUSED AstInlineCache::CreateJitIc
 
     // Set up the extra placeholder arguments
     //
-    auto getValueForExtraPlacehoder = [&](size_t extraPlaceholderOrd) WARN_UNUSED -> Value*
+    auto getValueForExtraPlaceholder = [&](size_t extraPlaceholderOrd) WARN_UNUSED -> Value*
     {
         switch (extraPlaceholderOrd)
         {
@@ -3573,7 +3573,7 @@ AstInlineCache::BaselineJitCodegenResult WARN_UNUSED AstInlineCache::CreateJitIc
     std::vector<Value*> extraPlaceholderArgsList;
     for (size_t extraPlaceholderOrd : extraPlaceholderOrds)
     {
-        extraPlaceholderArgsList.push_back(getValueForExtraPlacehoder(extraPlaceholderOrd));
+        extraPlaceholderArgsList.push_back(getValueForExtraPlaceholder(extraPlaceholderOrd));
     }
 
     // Piece together everything
@@ -3673,13 +3673,13 @@ AstInlineCache::BaselineJitCodegenResult WARN_UNUSED AstInlineCache::CreateJitIc
     std::string disasmForAudit;
     {
         disasmForAudit = DumpStencilDisassemblyForAuditPurpose(
-            stencil.m_triple, false /*isDataSection*/, cgRes.m_icPathPreFixupCode, cgRes.m_icPathRelocMarker, "# " /*linePrefix*/);
+            stencil.m_triple, false /*isDataSection*/, cgRes.m_icPathPreFixupCode, cgRes.m_icPathRelocMarker, "// " /*linePrefix*/);
 
         if (cgRes.m_dataSecPreFixupCode.size() > 0)
         {
-            disasmForAudit += std::string("#\n# Data Section:\n");
+            disasmForAudit += std::string("//\n// Data Section:\n");
             disasmForAudit += DumpStencilDisassemblyForAuditPurpose(
-                stencil.m_triple, true /*isDataSection*/, cgRes.m_dataSecPreFixupCode, cgRes.m_dataSecRelocMarker, "# " /*linePrefix*/);
+                stencil.m_triple, true /*isDataSection*/, cgRes.m_dataSecPreFixupCode, cgRes.m_dataSecRelocMarker, "// " /*linePrefix*/);
         }
         disasmForAudit += "\n";
     }
@@ -4037,7 +4037,7 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
                         size_t bytesToFill = inlineSlabSize - nopBegin;
                         code.resize(inlineSlabSize);
 
-                        if (bytesToFill >= 16 && effectOrdsWithTailJumpRemoved.count(it.first))
+                        /*if (bytesToFill >= 16 && effectOrdsWithTailJumpRemoved.count(it.first))
                         {
                             // The NOP sequence will actually be executed as we removed the tail jump.
                             // Executing >= 16 bytes of NOP might not make sense (I forgot the exact source but I believe
@@ -4049,7 +4049,7 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
                             buf[1] = SafeIntegerCast<uint8_t>(bytesToFill - 2);
                             nopBegin += 2;
                             bytesToFill -= 2;
-                        }
+                        }*/
 
                         FillAddressRangeWithX64MultiByteNOPs(code.data() + nopBegin, bytesToFill);
                     }
@@ -4217,7 +4217,7 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
                     //
                     {
                         ReleaseAssert(icGlobalOrd >= globalIcTraitOrdBase);
-                        std::string disAsmForAuditPfx = "# IC Effect Kind #" + std::to_string(icGlobalOrd - globalIcTraitOrdBase);
+                        std::string disAsmForAuditPfx = "// IC Effect Kind #" + std::to_string(icGlobalOrd - globalIcTraitOrdBase);
                         disAsmForAuditPfx += " (inline slab version, global ord = " + std::to_string(icGlobalOrd) + ", code len = " + std::to_string(cgRes.m_icSize) + "):\n\n";
                         inlineSlabAuditLog += disAsmForAuditPfx + cgRes.m_disasmForAudit;
                     }
@@ -4256,7 +4256,7 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
 
             size_t icGlobalOrd = llRes.m_effectPlaceholderDesc[k].m_globalOrd;
             ReleaseAssert(icGlobalOrd >= globalIcTraitOrdBase);
-            std::string disAsmForAuditPfx = "# IC Effect Kind #" + std::to_string(icGlobalOrd - globalIcTraitOrdBase);
+            std::string disAsmForAuditPfx = "// IC Effect Kind #" + std::to_string(icGlobalOrd - globalIcTraitOrdBase);
             disAsmForAuditPfx += " (global ord = " + std::to_string(icGlobalOrd) + ", code len = " + std::to_string(cgRes.m_icSize) + "):\n\n";
             auditInfo += disAsmForAuditPfx + cgRes.m_disasmForAudit;
 
@@ -4266,8 +4266,8 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
 
         auditInfo += inlineSlabAuditLog;
 
-        auditInfo += "# SMC region offset = " + std::to_string(smcRegionOffset) + ", length = " + std::to_string(smcRegionLen) + "\n";
-        auditInfo += "# IC miss slow path offset = " + std::to_string(icMissSlowPathOffset) + "\n";
+        auditInfo += "// SMC region offset = " + std::to_string(smcRegionOffset) + ", length = " + std::to_string(smcRegionLen) + "\n";
+        auditInfo += "// IC miss slow path offset = " + std::to_string(icMissSlowPathOffset) + "\n";
         auditInfo += std::string("# Has Inline Slab = ") + (inlineSlabInfo.m_hasInlineSlab ? "true" : "false");
         if (inlineSlabInfo.m_hasInlineSlab)
         {
@@ -4324,7 +4324,7 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
         {
             if (genericIcAuditInfo.size() > 1)
             {
-                finalAuditLog += "# IC Info (IC body = " + icLLRes[i].m_bodyFnName + ")\n\n";
+                finalAuditLog += "// IC Info (IC body = " + icLLRes[i].m_bodyFnName + ")\n\n";
             }
             finalAuditLog += genericIcAuditInfo[i];
         }
