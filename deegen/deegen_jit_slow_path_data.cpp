@@ -40,15 +40,12 @@ llvm::Value* WARN_UNUSED JitSlowPathDataJitAddress::EmitGetValueLogic(llvm::Valu
     LLVMContext& ctx = slowPathDataAddr->getContext();
     size_t offset = GetFieldOffset();
     ReleaseAssert(llvm_value_has_type<void*>(slowPathDataAddr));
+    ReleaseAssert(GetFieldSize() == 8);
     GetElementPtrInst* gep = GetElementPtrInst::CreateInBounds(llvm_type_of<uint8_t>(ctx), slowPathDataAddr,
                                                                { CreateLLVMConstantInt<uint64_t>(ctx, offset) }, "", insertBefore);
 
     ReleaseAssert(llvm_value_has_type<void*>(gep));
-    Value* addr32 = new LoadInst(llvm_type_of<int32_t>(ctx), gep, "", false /*isVolatile*/, Align(1), insertBefore);
-
-    // ZExt/SExt doesn't matter because the address is < 2GB
-    //
-    Value* addr64 = new ZExtInst(addr32, llvm_type_of<uint64_t>(ctx), "", insertBefore);
+    Value* addr64 = new LoadInst(llvm_type_of<int64_t>(ctx), gep, "", false /*isVolatile*/, Align(1), insertBefore);
 
     Value* ptr = new IntToPtrInst(addr64, llvm_type_of<void*>(ctx), "", insertBefore);
     return ptr;
@@ -63,13 +60,12 @@ void JitSlowPathDataJitAddress::EmitSetValueLogic(llvm::Value* slowPathDataAddr,
     ReleaseAssert(llvm_value_has_type<void*>(slowPathDataAddr));
     ReleaseAssert(llvm_value_has_type<void*>(value));
     size_t offset = GetFieldOffset();
-    ReleaseAssert(GetFieldSize() == 4);
+    ReleaseAssert(GetFieldSize() == 8);
     Value* addr = GetElementPtrInst::CreateInBounds(llvm_type_of<uint8_t>(ctx), slowPathDataAddr,
                                                     { CreateLLVMConstantInt<uint64_t>(ctx, offset) }, "", insertBefore);
 
     Value* val64 = new PtrToIntInst(value, llvm_type_of<uint64_t>(ctx), "", insertBefore);
-    Value* val32 = new TruncInst(val64, llvm_type_of<uint32_t>(ctx), "", insertBefore);
-    new StoreInst(val32, addr, false /*isVolatile*/, Align(1), insertBefore);
+    new StoreInst(val64, addr, false /*isVolatile*/, Align(1), insertBefore);
 }
 
 void JitSlowPathDataJitAddress::EmitSetValueLogic(llvm::Value* slowPathDataAddr, llvm::Value* value, llvm::BasicBlock* insertAtEnd)
@@ -181,8 +177,8 @@ JitSlowPathDataJitAddress JitSlowPathDataLayoutBase::GetFallthroughJitAddress()
 
 // Currently the baseline JIT slow path data is layouted as follow:
 //     2-byte opcode
-//     4-byte jitAddr -- the JIT'ed fast path address for this bytecode
-//     4-byte condBrJitAddr -- exists if this bytecode can branch, the JIT'ed address to branch to
+//     8-byte jitAddr -- the JIT'ed fast path address for this bytecode
+//     8-byte condBrJitAddr -- exists if this bytecode can branch, the JIT'ed address to branch to
 //     4-byte condBrBytecodeIndex -- exists if this bytecode can branch, the index of the bytecode target
 //     All the bytecode input operands
 //     Bytecode output operand, if exists
@@ -220,8 +216,9 @@ void BaselineJitSlowPathDataLayout::ComputeLayout(BytecodeVariantDefinition* bvd
         //
         assignOffsetAndAdvance(m_condBrJitAddr);
         assignOffsetAndAdvance(m_condBrBcIndex);
-        ReleaseAssert(m_condBrJitAddr.GetFieldSize() == 4 && m_condBrBcIndex.GetFieldSize() == 4);
-        ReleaseAssert(m_condBrJitAddr.GetFieldOffset() + 4 == m_condBrBcIndex.GetFieldOffset());
+        ReleaseAssert(m_condBrJitAddr.GetFieldSize() == 8);
+	ReleaseAssert(m_condBrBcIndex.GetFieldSize() == 4);
+        ReleaseAssert(m_condBrJitAddr.GetFieldOffset() + 8 == m_condBrBcIndex.GetFieldOffset());
     }
 
     auto assignForBcOperand = [&](JitSlowPathDataBcOperand& target, BcOperand* operand, size_t maxWidthBytes)

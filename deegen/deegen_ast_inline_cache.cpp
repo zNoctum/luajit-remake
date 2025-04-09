@@ -4302,7 +4302,6 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
         }
     }
 
-    icBodyModule.get()->dump();
     RunLLVMOptimizePass(icBodyModule.get());
 
     // Assert that all the IC codegen implementation functions are gone:
@@ -4337,6 +4336,7 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
     }
 
     finalRes.m_icBodyModule = std::move(icBodyModule);
+    finalRes.m_icBodyModule->dump();
     return finalRes;
 }
 

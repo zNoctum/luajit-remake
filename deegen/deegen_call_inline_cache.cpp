@@ -2443,7 +2443,7 @@ DeegenCallIcLogicCreator::BaselineJitCodegenResult WARN_UNUSED DeegenCallIcLogic
         BranchInst::Create(ccBB /*trueBB*/, insertIcDcModeBB /*falseBB*/, transitedToCCMode, dcBB);
 
         Value* patchableJmpEndAddr = GetElementPtrInst::CreateInBounds(llvm_type_of<uint8_t>(ctx), fastPathAddrOfOwningStencil,
-                                                                       { CreateLLVMConstantInt<uint64_t>(ctx, smcRegionOffset + 5) }, "", insertIcDcModeBB);
+                                                                       { CreateLLVMConstantInt<uint64_t>(ctx, smcRegionOffset + 4) }, "", insertIcDcModeBB);
 
         Value* icMissAddr = X64PatchableJumpUtil::GetDest(patchableJmpEndAddr, insertIcDcModeBB);
         Value* icMissAddrI64 = new PtrToIntInst(icMissAddr, llvm_type_of<uint64_t>(ctx), "", insertIcDcModeBB);

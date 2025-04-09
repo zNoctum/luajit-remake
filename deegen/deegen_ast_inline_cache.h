@@ -203,7 +203,7 @@ public:
         size_t m_smcRegionLength;
 
         // If the inline slab is already used, the patchable jump ends at fastpathAddr + m_inlineSlabPatchableJumpEndOffsetInFastPath
-        // Otherwise, the patchable jump ends at fastpathAddr + m_smcRegionOffset + 5
+        // Otherwise, the patchable jump ends at fastpathAddr + m_smcRegionOffset + 4
         //
         size_t m_inlineSlabPatchableJumpEndOffsetInFastPath;
 

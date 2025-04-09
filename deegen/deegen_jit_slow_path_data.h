@@ -58,7 +58,7 @@ class JitSlowPathDataJitAddress final : public JitSlowPathDataFieldBase
 public:
     JitSlowPathDataJitAddress()
     {
-        SetFieldSize(4);
+        SetFieldSize(8);
     }
 
     // Returns a void*, the JIT address
