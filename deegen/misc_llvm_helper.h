@@ -596,7 +596,7 @@ std::string WARN_UNUSED CompileLLVMModuleToAssemblyFile(llvm::Module* module, ll
 std::string WARN_UNUSED CompileLLVMModuleToAssemblyFile(llvm::Module* module, llvm::Reloc::Model relocationModel, llvm::CodeModel::Model codeModel, const std::function<void(llvm::TargetOptions&)>& targetOptionsTweaker);
 
 std::string WARN_UNUSED CompileLLVMModuleToAssemblyFileForStencilGeneration(llvm::Module* module, llvm::Reloc::Model relocationModel, llvm::CodeModel::Model codeModel);
-std::string WARN_UNUSED CompileLLVMModuleToAssemblyFileForStencilGeneration(llvm::Module* module, llvm::Reloc::Model relocationModel, llvm::CodeModel::Model codeModel, const std::function<void(llvm::TargetOptions&)>& targetOptionsTweaker);
+std::string WARN_UNUSED CompileLLVMModuleToAssemblyFileForStencilGeneration(llvm::Module* module, llvm::Reloc::Model relocationModel, llvm::CodeModel::Model codeModel, const std::function<void(llvm::TargetOptions&)>& targetOptionsTweaker, bool ellideLRFP);
 
 // Compile an LLVM module to ELF object (.o) file
 //

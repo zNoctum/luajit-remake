@@ -3494,7 +3494,7 @@ AstInlineCache::BaselineJitCodegenResult WARN_UNUSED AstInlineCache::CreateJitIc
     }
     else if (!inlineSlabInfo.m_hasInlineSlab)
     {
-        // No inline slab is possible for this IC, no need to check anything. The SMC region is in the initial jmp + nop form
+        // No inline slab is possible for this IC, no need to check anything. The SMC region is in the initial nop form
         //
         patchableJmpEndAddr = GetElementPtrInst::CreateInBounds(llvm_type_of<uint8_t>(ctx), mainLogicFastPath,
                                                                 { CreateLLVMConstantInt<uint64_t>(ctx, inlineSlabInfo.m_smcRegionOffset + 4) }, "", bb);
@@ -3916,11 +3916,21 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
                     {
                         RelocationRecord& rr = *it;
                         if (rr.m_offset == code.size() - 4 &&
-                            (rr.m_relocationType == ELF::R_X86_64_PLT32 || rr.m_relocationType == ELF::R_X86_64_PC32 || rr.m_relocationType == ELF::R_AARCH64_CONDBR19) &&
+                            (rr.m_relocationType == ELF::R_X86_64_PLT32 || rr.m_relocationType == ELF::R_X86_64_PC32) &&
                             rr.m_symKind == RelocationRecord::SymKind::StencilHole &&
                             rr.m_stencilHoleOrd == fallthroughPlaceholderOrd)
                         {
                             ReleaseAssert(rr.m_addend == -4);
+                            ReleaseAssert(!found);
+                            found = true;
+                            relocToRemove = it;
+                        }
+                        if (rr.m_offset == code.size() - 4 &&
+                            (rr.m_relocationType == ELF::R_AARCH64_CALL26 || rr.m_relocationType == ELF::R_AARCH64_JUMP26) &&
+                            rr.m_symKind == RelocationRecord::SymKind::StencilHole &&
+                            rr.m_stencilHoleOrd == fallthroughPlaceholderOrd)
+                        {
+                            ReleaseAssert(rr.m_addend == 0);
                             ReleaseAssert(!found);
                             found = true;
                             relocToRemove = it;
@@ -3930,8 +3940,11 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
                     {
                         ReleaseAssert(relocToRemove != relos.end());
                         relos.erase(relocToRemove);
-                        ReleaseAssert(code[code.size() - 5] == 0xe9 /*jmp*/);
-                        code.resize(code.size() - 5);
+                        ReleaseAssert(code[code.size() - 4] == 0x00 /*b*/);
+                        ReleaseAssert(code[code.size() - 3] == 0x00 /*b*/);
+                        ReleaseAssert(code[code.size() - 2] == 0x00 /*b*/);
+                        ReleaseAssert(code[code.size() - 1] == 0x14 /*b*/);
+                        code.resize(code.size() - 4);
 
                         ReleaseAssert(!effectOrdsWithTailJumpRemoved.count(k));
                         effectOrdsWithTailJumpRemoved.insert(k);
@@ -4336,7 +4349,6 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
     }
 
     finalRes.m_icBodyModule = std::move(icBodyModule);
-    finalRes.m_icBodyModule->dump();
     return finalRes;
 }
 

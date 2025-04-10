@@ -204,7 +204,8 @@ void BaselineJitImplCreator::DoLowering(BytecodeIrInfo* bii, const DeegenGlobalB
             // Put each data symbol into a separate data section so our stencil creation pass can produce more efficient result
             //
             opt.DataSections = true;
-        });
+        },
+	true /*ellideLRFP*/);
 
     // Run the ASM phase of the stencil lowering pass
     //

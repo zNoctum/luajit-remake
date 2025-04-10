@@ -1025,26 +1025,30 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
 
     // Attempt to eliminate the final jump to fallthrough
     //
-    if (placeholderOrdForFallthroughIfFastPath != static_cast<size_t>(-1) && code.size() >= 5)
+    if (placeholderOrdForFallthroughIfFastPath != static_cast<size_t>(-1) && code.size() >= 4)
     {
         bool found = false;
         for (const RelocationRecord& rr : relocs)
         {
             if (rr.m_offset == code.size() - 4 &&
-                (rr.m_relocationType == ELF::R_X86_64_PLT32 || rr.m_relocationType == ELF::R_X86_64_PC32) &&
+                (rr.m_relocationType == ELF::R_X86_64_PLT32 || rr.m_relocationType == ELF::R_X86_64_PC32 ||
+		 rr.m_relocationType == ELF::R_AARCH64_JUMP26 || rr.m_relocationType == ELF::R_AARCH64_CALL26) &&
                 rr.m_symKind == RelocationRecord::SymKind::StencilHole &&
                 rr.m_stencilHoleOrd == placeholderOrdForFallthroughIfFastPath)
             {
-                ReleaseAssert(rr.m_addend == -4);
+                ReleaseAssert(rr.m_addend == 0);
                 ReleaseAssert(!found);
                 found = true;
             }
         }
         if (found)
         {
-            ReleaseAssert(code[code.size() - 5] == 0xe9 /*jmp*/);
+            ReleaseAssert(code[code.size() - 4] == 0x00 /*b*/);
+            ReleaseAssert(code[code.size() - 3] == 0x00 /*b*/);
+            ReleaseAssert(code[code.size() - 2] == 0x00 /*b*/);
+            ReleaseAssert(code[code.size() - 1] == 0x14 /*b*/);
             finalJumpEliminated = true;
-            codeLen -= 5;
+            codeLen -= 4;
         }
     }
 
@@ -1064,7 +1068,7 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
     //
     for (const RelocationRecord& rr : relocs)
     {
-        if (finalJumpEliminated && rr.m_offset == codeLen + 1)
+        if (finalJumpEliminated && rr.m_offset == codeLen)
         {
             continue;
         }
@@ -1118,11 +1122,11 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
         case ELF::R_AARCH64_MOVW_UABS_G3:
         case ELF::R_AARCH64_TSTBR14:
         case ELF::R_AARCH64_CONDBR19:
-        case ELF::R_AARCH64_JUMP26:
-        case ELF::R_AARCH64_CALL26:
         case ELF::R_AARCH64_ADR_PREL_PG_HI21:
         case ELF::R_AARCH64_ADR_PREL_PG_HI21_NC:
         case ELF::R_AARCH64_ADD_ABS_LO12_NC:
+        case ELF::R_AARCH64_JUMP26:
+        case ELF::R_AARCH64_CALL26:
         {
             // On AArch64 we can't pre modify the relocation location because it also contains instruction data
             // and thus could lead to code that can't be disassembled
@@ -1285,7 +1289,7 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
 
     for (const RelocationRecord& rr : relocs)
     {
-        if (finalJumpEliminated && rr.m_offset == codeLen + 1)
+        if (finalJumpEliminated && rr.m_offset == codeLen)
         {
             continue;
         }
@@ -1466,7 +1470,7 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
 
             UnalignedStore<uint32_t>(buf + rr.m_offset, 0);
             fprintf(fp, "uint32_t tmp = static_cast<uint32_t>(PAGE(deegen_patch_symval + %lluULL) - PAGE(reinterpret_cast<uint64_t>(deegen_dstAddr) + %lluULL));\n",
-                    static_cast<unsigned long long>(rr.m_addend),
+                    static_cast<unsigned long long>(rr.m_addend)+4,
                     static_cast<unsigned long long>(rr.m_offset));
             fprintf(fp, "tmp = ((tmp&~MASK(30))>>1) + ((tmp&MASK(30))>>7) + static_cast<uint32_t>(%lluULL);\n", static_cast<unsigned long long>(oldVal));
 	    //fprintf(fp, "std::printf(\"%%02X %%02X %%02X %%02X // HI21\\n\", (tmp)&0xFF, (tmp>>8)&0xFF, (tmp>>16)&0xFF, (tmp>>24)&0xFF);\n");
@@ -1486,7 +1490,7 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
 
             UnalignedStore<uint32_t>(buf + rr.m_offset, 0);
             fprintf(fp, "uint32_t tmp = static_cast<uint32_t>(deegen_patch_symval + %lluULL - (reinterpret_cast<uint64_t>(deegen_dstAddr) + %lluULL));\n",
-                    static_cast<unsigned long long>(rr.m_addend),
+                    static_cast<unsigned long long>(rr.m_addend)+4,
                     static_cast<unsigned long long>(rr.m_offset));
 	    fprintf(fp, "tmp = static_cast<uint32_t>(%lluU) + static_cast<uint32_t>(((tmp>>2)&MASK(19))<<5);\n",
                     static_cast<unsigned long long>(oldVal));
@@ -1506,7 +1510,7 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
 
             UnalignedStore<uint32_t>(buf + rr.m_offset, 0);
             fprintf(fp, "uint32_t tmp = static_cast<uint32_t>(deegen_patch_symval + %lluULL - (reinterpret_cast<uint64_t>(deegen_dstAddr) + %lluULL));\n",
-                    static_cast<unsigned long long>(rr.m_addend),
+                    static_cast<unsigned long long>(rr.m_addend)+4,
                     static_cast<unsigned long long>(rr.m_offset));
 	    fprintf(fp, "tmp = static_cast<uint32_t>(%lluU) + static_cast<uint32_t>(((tmp>>2)&MASK(14))<<5);\n",
                     static_cast<unsigned long long>(oldVal));
@@ -1527,7 +1531,7 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
 
             UnalignedStore<uint32_t>(buf + rr.m_offset, 0);
             fprintf(fp, "uint32_t tmp = static_cast<uint32_t>(deegen_patch_symval + %lluULL - (reinterpret_cast<uint64_t>(deegen_dstAddr) + %lluULL));\n",
-                    static_cast<unsigned long long>(rr.m_addend),
+                    static_cast<unsigned long long>(rr.m_addend)+4,
                     static_cast<unsigned long long>(rr.m_offset));
 	    fprintf(fp, "tmp = static_cast<uint32_t>(%lluU) + ((tmp>>2)&0x3FFFFFF);\n",
                     static_cast<unsigned long long>(oldVal));
