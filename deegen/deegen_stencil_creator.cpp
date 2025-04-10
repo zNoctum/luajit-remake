@@ -1374,7 +1374,7 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
 	    fprintf(fp, "uint32_t tmp = static_cast<uint32_t>(%lluULL) + static_cast<uint32_t>(((deegen_patch_symval + %lluULL) & 0xffff) << 5);\n",
                     static_cast<unsigned long long>(oldVal),
                     static_cast<unsigned long long>(rr.m_addend)); 
-	    //fprintf(fp, "std::printf(\"%%02X %%02X %%02X %%02X // UABS_G0\\n\", (tmp)&0xFF, (tmp>>8)&0xFF, (tmp>>16)&0xFF, (tmp>>24)&0xFF);\n");
+	    //fprintf(fp, "std::printf(\"%%#08llx => %%02X %%02X %%02X %%02X // UABS_G0, Manifesting %%#08llx\\n\", reinterpret_cast<unsigned long long>(deegen_dstAddr) + %lluULL, (tmp)&0xFF, (tmp>>8)&0xFF, (tmp>>16)&0xFF, (tmp>>24)&0xFF, deegen_patch_symval + %lluULL);\n", static_cast<unsigned long long>(rr.m_offset), static_cast<unsigned long long>(rr.m_addend));
             fprintf(fp, "deegen_cp_store32(deegen_dstAddr + %llu, tmp);\n",
                     static_cast<unsigned long long>(rr.m_offset));
 
@@ -1470,7 +1470,7 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
 
             UnalignedStore<uint32_t>(buf + rr.m_offset, 0);
             fprintf(fp, "uint32_t tmp = static_cast<uint32_t>(PAGE(deegen_patch_symval + %lluULL) - PAGE(reinterpret_cast<uint64_t>(deegen_dstAddr) + %lluULL));\n",
-                    static_cast<unsigned long long>(rr.m_addend)+4,
+                    static_cast<unsigned long long>(rr.m_addend),
                     static_cast<unsigned long long>(rr.m_offset));
             fprintf(fp, "tmp = ((tmp&~MASK(30))>>1) + ((tmp&MASK(30))>>7) + static_cast<uint32_t>(%lluULL);\n", static_cast<unsigned long long>(oldVal));
 	    //fprintf(fp, "std::printf(\"%%02X %%02X %%02X %%02X // HI21\\n\", (tmp)&0xFF, (tmp>>8)&0xFF, (tmp>>16)&0xFF, (tmp>>24)&0xFF);\n");
@@ -1490,7 +1490,7 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
 
             UnalignedStore<uint32_t>(buf + rr.m_offset, 0);
             fprintf(fp, "uint32_t tmp = static_cast<uint32_t>(deegen_patch_symval + %lluULL - (reinterpret_cast<uint64_t>(deegen_dstAddr) + %lluULL));\n",
-                    static_cast<unsigned long long>(rr.m_addend)+4,
+                    static_cast<unsigned long long>(rr.m_addend),
                     static_cast<unsigned long long>(rr.m_offset));
 	    fprintf(fp, "tmp = static_cast<uint32_t>(%lluU) + static_cast<uint32_t>(((tmp>>2)&MASK(19))<<5);\n",
                     static_cast<unsigned long long>(oldVal));
@@ -1510,7 +1510,7 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
 
             UnalignedStore<uint32_t>(buf + rr.m_offset, 0);
             fprintf(fp, "uint32_t tmp = static_cast<uint32_t>(deegen_patch_symval + %lluULL - (reinterpret_cast<uint64_t>(deegen_dstAddr) + %lluULL));\n",
-                    static_cast<unsigned long long>(rr.m_addend)+4,
+                    static_cast<unsigned long long>(rr.m_addend),
                     static_cast<unsigned long long>(rr.m_offset));
 	    fprintf(fp, "tmp = static_cast<uint32_t>(%lluU) + static_cast<uint32_t>(((tmp>>2)&MASK(14))<<5);\n",
                     static_cast<unsigned long long>(oldVal));
@@ -1531,7 +1531,7 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
 
             UnalignedStore<uint32_t>(buf + rr.m_offset, 0);
             fprintf(fp, "uint32_t tmp = static_cast<uint32_t>(deegen_patch_symval + %lluULL - (reinterpret_cast<uint64_t>(deegen_dstAddr) + %lluULL));\n",
-                    static_cast<unsigned long long>(rr.m_addend)+4,
+                    static_cast<unsigned long long>(rr.m_addend),
                     static_cast<unsigned long long>(rr.m_offset));
 	    fprintf(fp, "tmp = static_cast<uint32_t>(%lluU) + ((tmp>>2)&0x3FFFFFF);\n",
                     static_cast<unsigned long long>(oldVal));

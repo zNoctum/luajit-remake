@@ -1029,10 +1029,6 @@ private:
     // The data members
     //
 
-    // must be first member, stores the value of static_cast<CRTP*>(this)
-    //
-    //uintptr_t m_self;
-
     bool m_isEngineStartingTierBaselineJit;
     EngineMaxTier m_engineMaxTier;
 

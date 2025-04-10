@@ -27,6 +27,8 @@ static void LaunchScript(int argc, char** argv)
 {
     assert(argc >= 2);
     VM* vm = VM::Create();
+    //vm->SetEngineStartingTier(VM::EngineStartingTier::Interpreter);
+    //vm->SetEngineMaxTier(VM::EngineMaxTier::Interpreter);
     vm->SetEngineStartingTier(VM::EngineStartingTier::BaselineJIT);
     vm->SetEngineMaxTier(VM::EngineMaxTier::BaselineJIT);
 

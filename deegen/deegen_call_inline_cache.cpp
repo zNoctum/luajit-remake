@@ -2117,9 +2117,9 @@ static void SetupCallIcSmcRegionInitialInstructions(DeegenStencil& mainLogicSten
         rr.m_relocationType = llvm::ELF::R_AARCH64_JUMP26;
         rr.m_symKind = RelocationRecord::SymKind::SlowPathAddr;
         rr.m_offset = smcRegionOffset;
-        // SlowPathAddr + dcIcMissDestOffsetInSlowPath - PC - 4
+        // SlowPathAddr + dcIcMissDestOffsetInSlowPath - PC
         //
-        rr.m_addend = static_cast<int64_t>(dcIcMissDestOffsetInSlowPath - 4);
+        rr.m_addend = static_cast<int64_t>(dcIcMissDestOffsetInSlowPath);
         rlist.push_back(rr);
     }
 
