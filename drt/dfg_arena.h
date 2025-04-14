@@ -141,7 +141,7 @@ public:
     static Arena* WARN_UNUSED Create()
     {
         void* base = do_mmap_with_custom_alignment(1ULL << 32 /*alignment*/, 1ULL << 31 /*length*/, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE);
-        size_t allocSize = RoundUpToPO2Alignment(sizeof(Arena), 4096);
+        size_t allocSize = RoundUpToPO2Alignment(sizeof(Arena), 16384);
         void* tmp = mmap(
             base,
             allocSize,
@@ -162,7 +162,7 @@ private:
     }
 
     static constexpr size_t x_minimum_alignment = 8;
-    static constexpr size_t x_allocation_chunk_size = x_isDebugBuild ? 4096 : 131072;
+    static constexpr size_t x_allocation_chunk_size = x_isDebugBuild ? 16384 : 131072;
 
     template<size_t alignment>
     void* WARN_UNUSED ALWAYS_INLINE AllocateWithAlignment(size_t size)
@@ -200,7 +200,7 @@ private:
     void NO_INLINE __attribute__((__preserve_most__)) Grow()
     {
         assert(m_curPtr > m_boundaryPtr);
-        assert(m_boundaryPtr % 4096 == 0);
+        assert(m_boundaryPtr % 16384 == 0);
         size_t sizeToAllocate = m_curPtr - m_boundaryPtr;
         sizeToAllocate = RoundUpToPO2Alignment(sizeToAllocate, x_allocation_chunk_size);
         VM_FAIL_IF(m_boundaryPtr + sizeToAllocate > ArenaEndAddr(), "DFG arena overflowed 2GB limit!");
@@ -214,7 +214,7 @@ private:
         assert(r == reinterpret_cast<void*>(m_boundaryPtr));
         m_boundaryPtr += sizeToAllocate;
         assert(m_curPtr <= m_boundaryPtr);
-        assert(m_boundaryPtr % 4096 == 0);
+        assert(m_boundaryPtr % 16384 == 0);
     }
 
     void NO_INLINE ResetImpl(bool freeMemoryToOS)
@@ -223,7 +223,7 @@ private:
         assert(static_cast<uint32_t>(base) == 0);
         size_t oldBoundaryPtr = m_boundaryPtr;
         m_curPtr = base + RoundUpToPO2Alignment(sizeof(Arena), x_minimum_alignment);
-        m_boundaryPtr = base + RoundUpToPO2Alignment(sizeof(Arena), 4096);
+        m_boundaryPtr = base + RoundUpToPO2Alignment(sizeof(Arena), 16384);
         assert(m_curPtr <= m_boundaryPtr);
         if (freeMemoryToOS && oldBoundaryPtr > m_boundaryPtr)
         {

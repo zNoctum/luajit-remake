@@ -16,9 +16,9 @@ index 32a10ad41..7701cac65 100644
 --- a/llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp
 +++ b/llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp
 @@ -125,6 +125,12 @@
-
+ 
  using namespace llvm;
-
+ 
 +
 +static cl::opt<bool>
 +    AddIndirectBranchDestAnnotationForDeegen("add-indirect-branch-dest-annotation-for-deegen", cl::init(false), cl::Hidden,
@@ -26,12 +26,12 @@ index 32a10ad41..7701cac65 100644
 +
 +
  #define DEBUG_TYPE "asm-printer"
-
+ 
  const char DWARFGroupName[] = "dwarf";
 @@ -1490,6 +1496,35 @@ void AsmPrinter::emitFunctionBody() {
        if (isVerbose())
          emitComments(MI, OutStreamer->getCommentOS());
-
+ 
 +      if (AddIndirectBranchDestAnnotationForDeegen)
 +      {
 +        const TargetInstrInfo* TII = MF->getSubtarget().getInstrInfo();
@@ -64,6 +64,26 @@ index 32a10ad41..7701cac65 100644
        switch (MI.getOpcode()) {
        case TargetOpcode::CFI_INSTRUCTION:
          emitCFIInstruction(MI);
+diff --git a/llvm/lib/ExecutionEngine/RuntimeDyld/RuntimeDyldELF.cpp b/llvm/lib/ExecutionEngine/RuntimeDyld/RuntimeDyldELF.cpp
+index c702584b7..16163a422 100644
+--- a/llvm/lib/ExecutionEngine/RuntimeDyld/RuntimeDyldELF.cpp
++++ b/llvm/lib/ExecutionEngine/RuntimeDyld/RuntimeDyldELF.cpp
+@@ -496,12 +496,15 @@ void RuntimeDyldELF::resolveAArch64Relocation(const SectionEntry &Section,
+   case ELF::R_AARCH64_MOVW_UABS_G3:
+     or32le(TargetPtr, ((Value + Addend) & 0xFFFF000000000000) >> 43);
+     break;
++  case ELF::R_AARCH64_MOVW_UABS_G2:
+   case ELF::R_AARCH64_MOVW_UABS_G2_NC:
+     or32le(TargetPtr, ((Value + Addend) & 0xFFFF00000000) >> 27);
+     break;
++  case ELF::R_AARCH64_MOVW_UABS_G1:
+   case ELF::R_AARCH64_MOVW_UABS_G1_NC:
+     or32le(TargetPtr, ((Value + Addend) & 0xFFFF0000) >> 11);
+     break;
++  case ELF::R_AARCH64_MOVW_UABS_G0:
+   case ELF::R_AARCH64_MOVW_UABS_G0_NC:
+     or32le(TargetPtr, ((Value + Addend) & 0xFFFF) << 5);
+     break;
 diff --git a/llvm/lib/IR/ConstantFold.cpp b/llvm/lib/IR/ConstantFold.cpp
 index 98adff107..76d408a2a 100644
 --- a/llvm/lib/IR/ConstantFold.cpp
@@ -75,7 +95,7 @@ index 98adff107..76d408a2a 100644
 +#include "llvm/IR/ConstantRange.h"
  using namespace llvm;
  using namespace llvm::PatternMatch;
-
+ 
 @@ -1387,9 +1388,18 @@ static ICmpInst::Predicate areGlobalsPotentiallyEqual(const GlobalValue *GV1,
      return false;
    };
@@ -97,7 +117,7 @@ index 98adff107..76d408a2a 100644
 +    }
    return ICmpInst::BAD_ICMP_PREDICATE;
  }
-
+ 
 @@ -1456,6 +1466,8 @@ static ICmpInst::Predicate evaluateICmpRelation(Constant *V1, Constant *V2,
      if (const GlobalValue *GV2 = dyn_cast<GlobalValue>(V2)) {
        return areGlobalsPotentiallyEqual(GV, GV2);
@@ -124,23 +144,23 @@ index c0da242a2..a1fd5c85e 100644
 @@ -334,9 +334,9 @@ def CC_AArch64_GHC : CallingConv<[
    CCIfType<[v1i64, v2i32, v4i16, v8i8, v2f32], CCBitConvertToType<f64>>,
    CCIfType<[v2i64, v4i32, v8i16, v16i8, v4f32, f128], CCBitConvertToType<v2f64>>,
-
+ 
 -  CCIfType<[v2f64], CCAssignToReg<[Q4, Q5]>>,
 -  CCIfType<[f32], CCAssignToReg<[S8, S9, S10, S11]>>,
 -  CCIfType<[f64], CCAssignToReg<[D12, D13, D14, D15]>>,
 +  CCIfType<[v2f64], CCAssignToReg<[Q4, Q5, Q6, Q7, Q8, Q9, Q10]>>,
 +  CCIfType<[f32],   CCAssignToReg<[S4, S5, S6, S7, S8, S9, S10]>>,
 +  CCIfType<[f64],   CCAssignToReg<[D4, D5, D6, D7, D8, D9, D10]>>,
-
+ 
    // Promote i8/i16/i32 arguments to i64.
    CCIfType<[i8, i16, i32], CCPromoteToType<i64>>,
 @@ -424,7 +424,7 @@ def CSR_AArch64_AllRegs
                             (sequence "S%u", 0, 31), (sequence "D%u", 0, 31),
                             (sequence "Q%u", 0, 31))>;
-
+ 
 -def CSR_AArch64_NoRegs : CalleeSavedRegs<(add)>;
 +def CSR_AArch64_NoRegs : CalleeSavedRegs<(add FP, LR)>;
-
+ 
  def CSR_AArch64_RT_MostRegs :  CalleeSavedRegs<(add CSR_AArch64_AAPCS,
                                                  (sequence "X%u", 9, 15))>;
 diff --git a/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp b/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
@@ -150,14 +170,14 @@ index 78babdf9f..dcfc6f280 100644
 @@ -257,6 +257,11 @@ cl::opt<bool> EnableHomogeneousPrologEpilog(
      cl::desc("Emit homogeneous prologue and epilogue for the size "
               "optimization (default = off)"));
-
+ 
 +static cl::opt<bool> GenerateDeegenStencilCode(
 +    "generate-deegen-stencil-code", cl::init(false), cl::Hidden,
 +    cl::desc("This switches the saving of LR and FP off for the GHC calling convention"));
 +
 +
  STATISTIC(NumRedZoneFunctions, "Number of functions using red zone");
-
+ 
  /// Returns how much of the incoming argument stack area (in bytes) we should
 @@ -288,7 +293,7 @@ static int64_t getArgumentStackToRestore(MachineFunction &MF,
    } else {
@@ -169,22 +189,22 @@ index 78babdf9f..dcfc6f280 100644
      ArgumentPopSize = AFI->getArgumentStackToRestore();
    }
 @@ -1469,7 +1474,7 @@ void AArch64FrameLowering::emitPrologue(MachineFunction &MF,
-
+ 
    // All calls are tail calls in GHC calling conv, and functions have no
    // prologue/epilogue.
 -  if (MF.getFunction().getCallingConv() == CallingConv::GHC)
 +  if (MF.getFunction().getCallingConv() == CallingConv::GHC && GenerateDeegenStencilCode)
      return;
-
+ 
    // Set tagged base pointer to the requested stack slot.
 @@ -1925,7 +1930,7 @@ void AArch64FrameLowering::emitEpilogue(MachineFunction &MF,
-
+ 
    // All calls are tail calls in GHC calling conv, and functions have no
    // prologue/epilogue.
 -  if (MF.getFunction().getCallingConv() == CallingConv::GHC)
 +  if (MF.getFunction().getCallingConv() == CallingConv::GHC && GenerateDeegenStencilCode)
      return;
-
+ 
    // How much of the stack used by incoming arguments this function is expected
 @@ -2950,7 +2955,7 @@ void AArch64FrameLowering::determineCalleeSaves(MachineFunction &MF,
                                                  RegScavenger *RS) const {
@@ -193,7 +213,7 @@ index 78babdf9f..dcfc6f280 100644
 -  if (MF.getFunction().getCallingConv() == CallingConv::GHC)
 +  if (MF.getFunction().getCallingConv() == CallingConv::GHC && GenerateDeegenStencilCode)
      return;
-
+ 
    TargetFrameLowering::determineCalleeSaves(MF, SavedRegs, RS);
 diff --git a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp
 index 06e21f90e..a9c9a10d8 100644
@@ -237,7 +257,7 @@ index 06e21f90e..a9c9a10d8 100644
 @@ -7142,6 +7156,47 @@ SDValue AArch64TargetLowering::getAddrLarge(NodeTy *N, SelectionDAG &DAG,
        getTargetNode(N, Ty, DAG, AArch64II::MO_G0 | MO_NC | Flags));
  }
-
+ 
 +template <class NodeTy>
 +SDValue AArch64TargetLowering::getAddrAbsolute(const GlobalValue* GV, NodeTy *N,
 +                                               SelectionDAG &DAG,
@@ -284,7 +304,7 @@ index 06e21f90e..a9c9a10d8 100644
  SDValue AArch64TargetLowering::getAddr(NodeTy *N, SelectionDAG &DAG,
 @@ -7184,7 +7239,9 @@ SDValue AArch64TargetLowering::LowerGlobalAddress(SDValue Op,
    }
-
+ 
    SDValue Result;
 -  if (getTargetMachine().getCodeModel() == CodeModel::Large) {
 +  if (GV->isAbsoluteSymbolRef()) {
@@ -313,7 +333,7 @@ index 835a7b6cc..8c18380b4 100644
 @@ -2556,6 +2556,48 @@ bool AArch64InstrInfo::getMemOperandsWithOffsetWidth(
    return true;
  }
-
+ 
 +int AArch64InstrInfo::getJumpTableIndex(const llvm::MachineInstr &MI) const {
 +  unsigned Opcode = MI.getOpcode();
 +  // $x10, $x11 = JumpTableDest8 $x9, $x8, %XX
@@ -366,7 +386,7 @@ index b7a6ac301..ece4f3a49 100644
 @@ -134,6 +134,8 @@ public:
    /// Hint that pairing the given load or store is unprofitable.
    static void suppressLdStPair(MachineInstr &MI);
-
+ 
 +  int getJumpTableIndex(const MachineInstr &MI) const override;
 +
    Optional<ExtAddrMode>
@@ -394,25 +414,25 @@ index 4dd8a6cdd..5a2c1fa5d 100644
 @@ -705,9 +705,9 @@ def CC_X86_64_GHC : CallingConv<[
    // Promote i8/i16/i32 arguments to i64.
    CCIfType<[i8, i16, i32], CCPromoteToType<i64>>,
-
+ 
 -  // Pass in STG registers: Base, Sp, Hp, R1, R2, R3, R4, R5, R6, SpLim
 +  // Pass in STG registers: Base, Sp, Hp, R1, R2, R3, R4, R5, R6, SpLim, RCX, RDX, R10, R11
    CCIfType<[i64],
 -            CCAssignToReg<[R13, RBP, R12, RBX, R14, RSI, RDI, R8, R9, R15]>>,
 +            CCAssignToReg<[R13, RBP, R12, RBX, R14, RSI, RDI, R8, R9, R15, RCX, RDX, R10, R11]>>,
-
+ 
    // Pass in STG registers: F1, F2, F3, F4, D1, D2
    CCIfType<[f32, f64, v16i8, v8i16, v4i32, v2i64, v4f32, v2f64],
 @@ -1154,14 +1154,14 @@ def CSR_64_CXX_TLS_Darwin_PE : CalleeSavedRegs<(add RBP)>;
  // CSRs that are handled explicitly via copies.
  def CSR_64_CXX_TLS_Darwin_ViaCopy : CalleeSavedRegs<(sub CSR_64_TLS_Darwin, RBP)>;
-
+ 
 -// All GPRs - except r11
 -def CSR_64_RT_MostRegs : CalleeSavedRegs<(add CSR_64, RAX, RCX, RDX, RSI, RDI,
 +// All GPRs - except r11, rax and rdx
 +def CSR_64_RT_MostRegs : CalleeSavedRegs<(add CSR_64, RCX, RSI, RDI,
                                                R8, R9, R10)>;
-
+ 
  // All registers - except r11
 -def CSR_64_RT_AllRegs     : CalleeSavedRegs<(add CSR_64_RT_MostRegs,
 +def CSR_64_RT_AllRegs     : CalleeSavedRegs<(add CSR_64_RT_MostRegs, RAX, RDX,
@@ -420,7 +440,7 @@ index 4dd8a6cdd..5a2c1fa5d 100644
 -def CSR_64_RT_AllRegs_AVX : CalleeSavedRegs<(add CSR_64_RT_MostRegs,
 +def CSR_64_RT_AllRegs_AVX : CalleeSavedRegs<(add CSR_64_RT_MostRegs, RAX, RDX,
                                                   (sequence "YMM%u", 0, 15))>;
-
+ 
  def CSR_64_MostRegs : CalleeSavedRegs<(add RBX, RCX, RDX, RSI, RDI, R8, R9, R10,
 diff --git a/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp b/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp
 index f88037e95..63eeebd19 100644
@@ -429,7 +449,7 @@ index f88037e95..63eeebd19 100644
 @@ -1786,6 +1786,14 @@ bool X86DAGToDAGISel::matchWrapper(SDValue N, X86ISelAddressMode &AM) {
      return true;
    }
-
+ 
 +  if (Subtarget->is64Bit() && AM.GV && AM.GV->isAbsoluteSymbolRef()) {
 +  Optional<ConstantRange> CR = AM.GV->getAbsoluteSymbolRange();
 +    if (CR.getValue().getMinSignedBits() > 32) {
@@ -440,15 +460,15 @@ index f88037e95..63eeebd19 100644
 +
    if (IsRIPRel)
      AM.setBaseReg(CurDAG->getRegister(X86::RIP, MVT::i64));
-
+ 
 @@ -2693,7 +2701,7 @@ bool X86DAGToDAGISel::selectMOV64Imm32(SDValue N, SDValue &Imm) {
    if (!CR)
      return TM.getCodeModel() == CodeModel::Small;
-
+ 
 -  return CR->getUnsignedMax().ult(1ull << 32);
 +  return CR->getMinSignedBits() <= 32;
  }
-
+ 
  bool X86DAGToDAGISel::selectLEA64_32Addr(SDValue N, SDValue &Base,
 diff --git a/llvm/lib/Target/X86/X86InstrInfo.cpp b/llvm/lib/Target/X86/X86InstrInfo.cpp
 index 74ef831e1..613faece6 100644
@@ -457,7 +477,7 @@ index 74ef831e1..613faece6 100644
 @@ -3252,6 +3252,68 @@ bool X86InstrInfo::analyzeBranchPredicate(MachineBasicBlock &MBB,
    return true;
  }
-
+ 
 +static int getJumpTableIndexFromAddr(const MachineInstr &MI) {
 +    const MCInstrDesc &Desc = MI.getDesc();
 +    int MemRefBegin = X86II::getMemoryOperandNo(Desc.TSFlags);
@@ -530,7 +550,7 @@ index 81729e361..abc387bcd 100644
 @@ -327,6 +327,8 @@ public:
                       SmallVectorImpl<MachineOperand> &Cond,
                       bool AllowModify) const override;
-
+ 
 +  int getJumpTableIndex(const MachineInstr &MI) const override;
 +
    Optional<ExtAddrMode>

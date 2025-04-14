@@ -57,7 +57,7 @@ struct MergedStencilSection
         {
             ReleaseAssert(rec.m_offset < code.size());
             ReleaseAssert(rec.m_offset + (rec.m_is64Bit ? 8ULL : 4ULL) <= code.size());
-            m_condBrRecords.push_back({ .m_offset = rec.m_offset + offset, .m_is64Bit = rec.m_is64Bit });
+            m_condBrRecords.push_back({ .m_offset = rec.m_offset + offset, .m_granule = rec.m_granule, .m_is64Bit = rec.m_is64Bit });
         }
 
         return offset;
@@ -942,7 +942,24 @@ DeegenBytecodeBaselineJitInfo WARN_UNUSED DeegenBytecodeBaselineJitInfo::Create(
             {
                 Value* addr = GetElementPtrInst::CreateInBounds(llvm_type_of<uint8_t>(ctx), base,
                                                                 { CreateLLVMConstantInt<uint64_t>(ctx, rec.m_offset) }, "", entryBB);
-                BaselineJitCondBrLatePatchKind kind = (rec.m_is64Bit ? BaselineJitCondBrLatePatchKind::Int64 : BaselineJitCondBrLatePatchKind::Int32);
+                BaselineJitCondBrLatePatchKind kind;
+		switch (rec.m_granule) {
+		case 0:
+                    kind = BaselineJitCondBrLatePatchKind::Int16G0;
+		    break;
+		case 1:
+                    kind = BaselineJitCondBrLatePatchKind::Int16G1;
+		    break;
+		case 2:
+                    kind = BaselineJitCondBrLatePatchKind::Int16G2;
+		    break;
+		case 3:
+                    kind = BaselineJitCondBrLatePatchKind::Int16G3;
+		    break;
+		default:
+		    kind = (rec.m_is64Bit ? BaselineJitCondBrLatePatchKind::Int64 : BaselineJitCondBrLatePatchKind::Int32);
+		    break;
+		}
                 condBrPatchList.push_back(std::make_pair(addr, kind));
             }
         };

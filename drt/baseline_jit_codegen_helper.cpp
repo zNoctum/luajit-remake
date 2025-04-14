@@ -246,7 +246,6 @@ BaselineCodeBlock* NO_INLINE deegen_baseline_jit_do_codegen(CodeBlock* cb)
     //
     if (numLateCondBrPatches > 0)
     {
-        std::cout << "LateCondBrPatches exist!!!" << std::endl;
         uint32_t cachedDstBytecodePtr32 = condBrLatePatchList[0].m_dstBytecodePtrLow32bits - 1;
         size_t cachedBytecodeIndexLookupResult = 0;
         for (size_t i = 0; i < numLateCondBrPatches; i++)
