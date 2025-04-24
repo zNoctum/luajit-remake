@@ -18,6 +18,7 @@
 #include "llvm/MC/MCInstrAnalysis.h"
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
+#include <llvm/BinaryFormat/ELF.h>
 
 namespace dast {
 
@@ -946,7 +947,7 @@ struct PrintStencilCodegenLogicResult
 // 4. The fast path, slow path, data section address are named 'deegen_fastPathAddr', 'deegen_slowPathAddr', 'deegen_dataSecAddr' respectively
 //
 static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
-    const std::vector<uint8_t>& code,
+    const std::vector<uint8_t>& codePrev,
     const std::vector<RelocationRecord>& relocs,
     const std::string& placeholderComputations,
     size_t placeholderOrdForFallthroughIfFastPath,  // -1 if not fast path or not exist
@@ -954,6 +955,7 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
     bool isForIc)
 {
     PrintStencilCodegenLogicResult res;
+    std::vector<uint8_t> code(codePrev);
 
     AnonymousFile file;
     FILE* fp = file.GetFStream("w");
@@ -999,7 +1001,7 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
             case ELF::R_AARCH64_TSTBR14:
             {
                 // AArch64 instructions need to be 4-byte aligned
-		//
+                //
                 ReleaseAssert(rr.m_offset % 4 == 0);
                 len = 4;
                 break;
@@ -1032,7 +1034,7 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
         {
             if (rr.m_offset == code.size() - 4 &&
                 (rr.m_relocationType == ELF::R_X86_64_PLT32 || rr.m_relocationType == ELF::R_X86_64_PC32 ||
-		 rr.m_relocationType == ELF::R_AARCH64_JUMP26 || rr.m_relocationType == ELF::R_AARCH64_CALL26) &&
+                 rr.m_relocationType == ELF::R_AARCH64_JUMP26 || rr.m_relocationType == ELF::R_AARCH64_CALL26) &&
                 rr.m_symKind == RelocationRecord::SymKind::StencilHole &&
                 rr.m_stencilHoleOrd == placeholderOrdForFallthroughIfFastPath)
             {
@@ -1047,6 +1049,7 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
             ReleaseAssert(code[code.size() - 3] == 0x00 /*b*/);
             ReleaseAssert(code[code.size() - 2] == 0x00 /*b*/);
             ReleaseAssert(code[code.size() - 1] == 0x14 /*b*/);
+            code.resize(code.size() - 4);
             finalJumpEliminated = true;
             codeLen -= 4;
         }
@@ -1149,6 +1152,12 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
     fprintf(fp, "static_assert(std::is_same_v<decltype(deegen_icDataSecAddr), uint64_t>);\n");
     fprintf(fp, "static_assert(std::is_same_v<decltype(deegen_dataSecAddr), uint64_t>);\n");
     fprintf(fp, "assert(reinterpret_cast<uintptr_t>(deegen_dstAddr) %% 4 == 0);\n");
+
+    if (isForIc)
+    {
+        fprintf(fp, "[[maybe_unused]] uint64_t deegen_veneerOffset = 0;\n");
+        fprintf(fp, "std::printf(\"Address of IC: %%#08lx\\n\", reinterpret_cast<uint64_t>(deegen_dstAddr));\n");
+    }
 
     /*
     fprintf(fp, "// Hexcode:\n// ");
@@ -1253,28 +1262,30 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
                     // For bytecode, conditional branch targets are fixed up in the end
                     //
                     fprintf(fp, "uint64_t deegen_patch_symval = 0;\n");
-                    bool is64 = (rr.m_relocationType == ELF::R_X86_64_64);
-		    int8_t granule;
-		    switch (rr.m_relocationType) {
+                    BaselineJitCondBrLatePatchKind kind;
+                    switch (rr.m_relocationType) {
                     case ELF::R_AARCH64_MOVW_UABS_G3:
-                        granule = 3;
-			break;
+                        kind = BaselineJitCondBrLatePatchKind::G3;
+                        break;
                     case ELF::R_AARCH64_MOVW_UABS_G2:
                     case ELF::R_AARCH64_MOVW_UABS_G2_NC:
-                        granule = 2;
-			break;
+                        kind = BaselineJitCondBrLatePatchKind::G2;
+                        break;
                     case ELF::R_AARCH64_MOVW_UABS_G1:
                     case ELF::R_AARCH64_MOVW_UABS_G1_NC:
-                        granule = 1;
-			break;
+                        kind = BaselineJitCondBrLatePatchKind::G1;
+                        break;
                     case ELF::R_AARCH64_MOVW_UABS_G0:
                     case ELF::R_AARCH64_MOVW_UABS_G0_NC:
-                        granule = 0;
-			break;
+                        kind = BaselineJitCondBrLatePatchKind::G0;
+                        break;
+                    case ELF::R_X86_64_64:
+                        kind = BaselineJitCondBrLatePatchKind::Int64;
+                        break;
                     default:
-			granule = -1;
+                        kind = BaselineJitCondBrLatePatchKind::Int32;
                     }
-                    res.m_condBrFixupOffsets.push_back({ .m_offset = rr.m_offset, .m_granule = granule, .m_is64Bit = is64 });
+                    res.m_condBrFixupOffsets.push_back({ .m_offset = rr.m_offset, .m_kind = kind });
                 }
                 else
                 {
@@ -1391,13 +1402,11 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
             emitSymbolValue(rr);
 
             UnalignedStore<uint32_t>(buf + rr.m_offset, 0);
-	    fprintf(fp, "uint32_t tmp = static_cast<uint32_t>(%lluULL) + static_cast<uint32_t>(((deegen_patch_symval + %lluULL) & 0xffff) << 5);\n",
+            fprintf(fp, "uint32_t tmp = static_cast<uint32_t>(%lluULL) + static_cast<uint32_t>(((deegen_patch_symval + %lluULL) & 0xffff) << 5);\n",
                     static_cast<unsigned long long>(oldVal),
                     static_cast<unsigned long long>(rr.m_addend)); 
-	    //fprintf(fp, "std::printf(\"%%#08llx => %%02X %%02X %%02X %%02X // UABS_G0, Manifesting %%#08llx\\n\", reinterpret_cast<unsigned long long>(deegen_dstAddr) + %lluULL, (tmp)&0xFF, (tmp>>8)&0xFF, (tmp>>16)&0xFF, (tmp>>24)&0xFF, deegen_patch_symval + %lluULL);\n", static_cast<unsigned long long>(rr.m_offset), static_cast<unsigned long long>(rr.m_addend));
             fprintf(fp, "deegen_cp_store32(deegen_dstAddr + %llu, tmp);\n",
                     static_cast<unsigned long long>(rr.m_offset));
-
             fprintf(fp, "}\n");
 
             break;
@@ -1411,10 +1420,9 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
             emitSymbolValue(rr);
 
             UnalignedStore<uint32_t>(buf + rr.m_offset, 0);
-	    fprintf(fp, "uint32_t tmp = static_cast<uint32_t>(%lluULL) + static_cast<uint32_t>((((deegen_patch_symval + %lluULL) >> 16) & 0xffff) << 5);\n",
+            fprintf(fp, "uint32_t tmp = static_cast<uint32_t>(%lluULL) + static_cast<uint32_t>((((deegen_patch_symval + %lluULL) >> 16) & 0xffff) << 5);\n",
                     static_cast<unsigned long long>(oldVal),
                     static_cast<unsigned long long>(rr.m_addend));
-	    //fprintf(fp, "std::printf(\"%%02X %%02X %%02X %%02X // UABS_G1\\n\", (tmp)&0xFF, (tmp>>8)&0xFF, (tmp>>16)&0xFF, (tmp>>24)&0xFF);\n");
             fprintf(fp, "deegen_cp_store32(deegen_dstAddr + %llu, tmp);\n",
                     static_cast<unsigned long long>(rr.m_offset));
 
@@ -1431,10 +1439,9 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
             emitSymbolValue(rr);
 
             UnalignedStore<uint32_t>(buf + rr.m_offset, 0);
-	    fprintf(fp, "uint32_t tmp = static_cast<uint32_t>(%lluULL) + static_cast<uint32_t>((((deegen_patch_symval + %lluULL) >> 32) & 0xffff) << 5);\n",
+            fprintf(fp, "uint32_t tmp = static_cast<uint32_t>(%lluULL) + static_cast<uint32_t>((((deegen_patch_symval + %lluULL) >> 32) & 0xffff) << 5);\n",
                     static_cast<unsigned long long>(oldVal),
                     static_cast<unsigned long long>(rr.m_addend));
-	    //fprintf(fp, "std::printf(\"%%02X %%02X %%02X %%02X // UABS_G2\\n\", (tmp)&0xFF, (tmp>>8)&0xFF, (tmp>>16)&0xFF, (tmp>>24)&0xFF);\n");
             fprintf(fp, "deegen_cp_store32(deegen_dstAddr + %llu, tmp);\n",
                     static_cast<unsigned long long>(rr.m_offset));
 
@@ -1450,12 +1457,16 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
             emitSymbolValue(rr);
 
             UnalignedStore<uint32_t>(buf + rr.m_offset, 0);
-	    fprintf(fp, "uint32_t tmp = static_cast<uint32_t>(%lluULL) + static_cast<uint32_t>((((deegen_patch_symval + %lluULL) >> 48) & 0xffff) << 5);\n",
+            fprintf(fp, "uint32_t tmp = static_cast<uint32_t>(%lluULL) + static_cast<uint32_t>((((deegen_patch_symval + %lluULL) >> 48) & 0xffff) << 5);\n",
                     static_cast<unsigned long long>(oldVal),
                     static_cast<unsigned long long>(rr.m_addend));
-	    //fprintf(fp, "std::printf(\"%%02X %%02X %%02X %%02X // UABS_G3\\n\", (tmp)&0xFF, (tmp>>8)&0xFF, (tmp>>16)&0xFF, (tmp>>24)&0xFF);\n");
+            //fprintf(fp, "std::printf(\"%%02X %%02X %%02X %%02X // UABS_G3\\n\", (tmp)&0xFF, (tmp>>8)&0xFF, (tmp>>16)&0xFF, (tmp>>24)&0xFF);\n");
             fprintf(fp, "deegen_cp_store32(deegen_dstAddr + %llu, tmp);\n",
                     static_cast<unsigned long long>(rr.m_offset));
+            if (isForIc)
+            {
+                fprintf(fp, "std::printf(\"G3: %s(%d) at %%#08llx\\n\", deegen_patch_symval + %lluULL);\n", rr.m_symbolName.c_str(), rr.m_symKind, static_cast<unsigned long long>(rr.m_addend));
+            }
 
             fprintf(fp, "}\n");
 
@@ -1469,10 +1480,9 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
             emitSymbolValue(rr);
 
             UnalignedStore<uint32_t>(buf + rr.m_offset, 0);
-	    fprintf(fp, "uint32_t tmp = static_cast<uint32_t>(%lluULL) + static_cast<uint32_t>(((deegen_patch_symval + %lluULL)&MASK(12))<<10);\n",
+            fprintf(fp, "uint32_t tmp = static_cast<uint32_t>(%lluULL) + static_cast<uint32_t>(((deegen_patch_symval + %lluULL)&MASK(12))<<10);\n",
                     static_cast<unsigned long long>(oldVal),
                     static_cast<unsigned long long>(rr.m_addend));
-	    //fprintf(fp, "std::printf(\"%%02X %%02X %%02X %%02X // LO12\\n\", (tmp)&0xFF, (tmp>>8)&0xFF, (tmp>>16)&0xFF, (tmp>>24)&0xFF);\n");
             fprintf(fp, "deegen_cp_store32(deegen_dstAddr + %llu, tmp);\n",
                     static_cast<unsigned long long>(rr.m_offset));
 
@@ -1493,7 +1503,10 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
                     static_cast<unsigned long long>(rr.m_addend),
                     static_cast<unsigned long long>(rr.m_offset));
             fprintf(fp, "tmp = ((tmp&~MASK(30))>>1) + ((tmp&MASK(30))>>7) + static_cast<uint32_t>(%lluULL);\n", static_cast<unsigned long long>(oldVal));
-	    //fprintf(fp, "std::printf(\"%%02X %%02X %%02X %%02X // HI21\\n\", (tmp)&0xFF, (tmp>>8)&0xFF, (tmp>>16)&0xFF, (tmp>>24)&0xFF);\n");
+            // fprintf(fp, "std::printf(\"%%#016lx = %%#016lx\\n\", static_cast<uintptr_t>(static_cast<intptr_t>((target&0x7fffcULL)<<41)>>41), target);\n");
+            // fprintf(fp, "std::printf(\"HI21: %s(%d) at %%#08llx\\n\", deegen_patch_symval + %lluULL);\n", rr.m_symbolName.c_str(), rr.m_symKind, static_cast<unsigned long long>(rr.m_addend));
+            // fprintf(fp, "std::printf(\"%%#08llx => %%02X %%02X %%02X %%02X\\n\", reinterpret_cast<uint64_t>(deegen_dstAddr) + %lluULL, (tmp)&0xFF, (tmp>>8)&0xFF, (tmp>>16)&0xFF, (tmp>>24)&0xFF);\n", static_cast<unsigned long long>(rr.m_offset));
+            // fprintf(fp, "std::printf(\"================================================================================\\n\");\n");
             fprintf(fp, "deegen_cp_store32(deegen_dstAddr + %llu, tmp);\n",
                     static_cast<unsigned long long>(rr.m_offset));
 
@@ -1512,10 +1525,43 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
             fprintf(fp, "uint64_t target = deegen_patch_symval + %lluULL - (reinterpret_cast<uint64_t>(deegen_dstAddr) + %lluULL);\n",
                     static_cast<unsigned long long>(rr.m_addend),
                     static_cast<unsigned long long>(rr.m_offset));
-	    fprintf(fp, "uint32_t tmp = static_cast<uint32_t>(%lluU) + static_cast<uint32_t>(((target>>2)&MASK(19))<<5);\n",
+            if (isForIc)
+            {
+                // Materializes a veneer of the following shape
+                // adrp x16,            target
+                // add  x16, x16, :lo12:target
+                // br   x16
+                // 
+                fprintf(fp, "if (static_cast<uint64_t>(static_cast<int64_t>((target&0x1ffffcULL)<<43)>>43) != target)\n"
+                        "{\n"
+                        "    uint64_t offset = %lluUL;\n"
+                        "    uint64_t addend = %lluUL;\n"
+                        "    uint64_t codeLen = %lluUL;"
+                        // "    std::printf(\"%%#08lx\\\n\", reinterpret_cast<uint64_t>(deegen_dstAddr) + offset);\n"
+                        "    uint32_t tmp = static_cast<uint32_t>(PAGE(deegen_patch_symval + addend) - PAGE(reinterpret_cast<uint64_t>(deegen_dstAddr) + offset));\n"
+                        "    tmp = ((tmp&~MASK(30))>>1) + ((tmp&MASK(30))>>7) + 0x907cab10;\n"
+                        "    deegen_cp_store32(deegen_dstAddr + codeLen + deegen_veneerOffset + 0, tmp);\n"
+                        // "    std::printf(\"%%02X %%02X %%02X %%02X\\n\", (tmp)&0xFF, (tmp>>8)&0xFF, (tmp>>16)&0xFF, (tmp>>24)&0xFF);\n"
+                        "    tmp = static_cast<uint32_t>(((deegen_patch_symval + addend)&MASK(12))<<10) + 0x91000210;\n"
+                        // "    std::printf(\"%%02X %%02X %%02X %%02X\\n\", (tmp)&0xFF, (tmp>>8)&0xFF, (tmp>>16)&0xFF, (tmp>>24)&0xFF);\n"
+                        "    deegen_cp_store32(deegen_dstAddr + codeLen + deegen_veneerOffset + 4, tmp);\n"
+                        "    tmp = 0xd61f0200;\n"
+                        // "    std::printf(\"%%02X %%02X %%02X %%02X\\n\", (tmp)&0xFF, (tmp>>8)&0xFF, (tmp>>16)&0xFF, (tmp>>24)&0xFF);\n"
+                        "    deegen_cp_store32(deegen_dstAddr + codeLen + deegen_veneerOffset + 8, tmp);\n" 
+                        "    target = deegen_veneerOffset + (codeLen - offset);\n"
+                        "    deegen_veneerOffset += 12;\n"
+                        "}\n",
+                        static_cast<unsigned long long>(rr.m_offset),
+                        static_cast<unsigned long long>(rr.m_addend),
+                        static_cast<unsigned long long>(codeLen));
+            }
+            fprintf(fp, "uint32_t tmp = static_cast<uint32_t>(%lluU) | static_cast<uint32_t>(((target>>2)&MASK(19))<<5);\n",
                     static_cast<unsigned long long>(oldVal));
-	    //fprintf(fp, "std::printf(\"%%02X %%02X %%02X %%02X // CONDBR19\\n\", (tmp)&0xFF, (tmp>>8)&0xFF, (tmp>>16)&0xFF, (tmp>>24)&0xFF);\n");
-	    //fprintf(fp, "assert(static_cast<uintptr_t>(static_cast<intptr_t>((target&0x1ffffcULL)<<43)>>43) == target);\n");
+            // fprintf(fp, "std::printf(\"%%#016lx = %%#016lx\\n\", static_cast<uintptr_t>(static_cast<intptr_t>((target&0x1ffffcULL)<<43)>>43), target);\n");
+            // fprintf(fp, "std::printf(\"CONDBR19: %s(%d) at %%#08llx\\n\", deegen_patch_symval + %lluULL);\n", rr.m_symbolName.c_str(), rr.m_symKind, static_cast<unsigned long long>(rr.m_addend));
+            // fprintf(fp, "std::printf(\"%%#08llx => %%02X %%02X %%02X %%02X\\n\", reinterpret_cast<uint64_t>(deegen_dstAddr) + %lluULL, (tmp)&0xFF, (tmp>>8)&0xFF, (tmp>>16)&0xFF, (tmp>>24)&0xFF);\n", static_cast<unsigned long long>(rr.m_offset));
+            // fprintf(fp, "std::printf(\"================================================================================\\n\");\n");
+            if (!isForIc) fprintf(fp, "assert(static_cast<uintptr_t>(static_cast<intptr_t>((target&0x1ffffcULL)<<43)>>43) == target);\n");
             fprintf(fp, "deegen_cp_store32(deegen_dstAddr + %llu, tmp);\n",
                     static_cast<unsigned long long>(rr.m_offset));
 
@@ -1533,14 +1579,39 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
             fprintf(fp, "uint64_t target = deegen_patch_symval + %lluULL - (reinterpret_cast<uint64_t>(deegen_dstAddr) + %lluULL);\n",
                     static_cast<unsigned long long>(rr.m_addend),
                     static_cast<unsigned long long>(rr.m_offset));
-	    fprintf(fp, "uint32_t tmp = static_cast<uint32_t>(%lluU) + static_cast<uint32_t>(((target>>2)&MASK(14))<<5);\n",
+            if (isForIc)
+            {
+                // Materializes a veneer of the following shape
+                // adrp x16,            target
+                // add  x16, x16, :lo12:target
+                // br   x16
+                // 
+                fprintf(fp, "if (static_cast<uint64_t>(static_cast<int64_t>((target&0xfffcULL)<<48)>>48) != target)\n"
+                        "{\n"
+                        "    uint64_t offset = %lluUL;\n"
+                        "    uint64_t addend = %lluUL;\n"
+                        "    uint64_t codeLen = %lluUL;\n"
+                        // "    deegen_cp_arm64_veneer(deegen_dstAddr + codeLen + deegen_veneerOffset, target);\n"
+                        "    uint32_t tmp = static_cast<uint32_t>(PAGE(deegen_patch_symval + addend) - PAGE(reinterpret_cast<uint64_t>(deegen_dstAddr) + offset));\n"
+                        "    tmp = ((tmp&~MASK(30))>>1) + ((tmp&MASK(30))>>7) + 0x907cab10;\n"
+                        "    deegen_cp_store32(deegen_dstAddr + codeLen + deegen_veneerOffset + 0, tmp);\n"        // adrp x16,            target
+                        "    tmp = static_cast<uint32_t>(((deegen_patch_symval + addend)&MASK(12))<<10) + 0x91000210;\n"
+                        "    deegen_cp_store32(deegen_dstAddr + codeLen + deegen_veneerOffset + 4, tmp);\n"        // add  x16, x16, :lo12:target
+                        "    deegen_cp_store32(deegen_dstAddr + codeLen + deegen_veneerOffset + 8, 0xd61f0200);\n" // br   x16
+                        "    target = deegen_veneerOffset + codeLen - offset;\n"
+                        "    deegen_veneerOffset += 12;\n"
+                        "}\n",
+                        static_cast<unsigned long long>(rr.m_offset),
+                        static_cast<unsigned long long>(rr.m_addend),
+                        static_cast<unsigned long long>(codeLen));
+            }
+            fprintf(fp, "uint32_t tmp = static_cast<uint32_t>(%lluU) | static_cast<uint32_t>(((target>>2)&MASK(14))<<5);\n",
                     static_cast<unsigned long long>(oldVal));
-	    //fprintf(fp, "std::printf(\"%%#016lx\\n\", target);\n");
-	    //fprintf(fp, "std::printf(\"%s at %%#08llx\\n\", deegen_patch_symval + %lluULL);\n", rr.m_symbolName.c_str(), static_cast<unsigned long long>(rr.m_addend));
-	    //fprintf(fp, "std::printf(\"%%#08llx => %%02X %%02X %%02X %%02X\\n\", reinterpret_cast<uint64_t>(deegen_dstAddr) + %lluULL, (tmp)&0xFF, (tmp>>8)&0xFF, (tmp>>16)&0xFF, (tmp>>24)&0xFF);\n", static_cast<unsigned long long>(rr.m_offset));
-	    //fprintf(fp, "std::printf(\"================================================================================\\n\");\n");
-	    //fprintf(fp, "std::printf(\"%%#016lx = %%#016lx\\n\", static_cast<uintptr_t>(static_cast<intptr_t>((target&0xfffcULL)<<48)>>48), target);\n");
-	    //fprintf(fp, "assert(static_cast<uintptr_t>(static_cast<intptr_t>((target&0xfffcULL)<<48)>>48) == target);\n");
+            // fprintf(fp, "std::printf(\"%%#016lx = %%#016lx\\n\", static_cast<uintptr_t>(static_cast<intptr_t>((target&0xfffcULL)<<48)>>48), target);\n");
+            // fprintf(fp, "std::printf(\"TSTBR14: %s(%d) at %%#08llx\\n\", deegen_patch_symval + %lluULL);\n", rr.m_symbolName.c_str(), rr.m_symKind, static_cast<unsigned long long>(rr.m_addend));
+            // fprintf(fp, "std::printf(\"%%#08llx => %%02X %%02X %%02X %%02X\\n\", reinterpret_cast<uint64_t>(deegen_dstAddr) + %lluULL, (tmp)&0xFF, (tmp>>8)&0xFF, (tmp>>16)&0xFF, (tmp>>24)&0xFF);\n", static_cast<unsigned long long>(rr.m_offset));
+            // fprintf(fp, "std::printf(\"================================================================================\\n\");\n");
+            if (!isForIc) fprintf(fp, "assert(static_cast<uintptr_t>(static_cast<intptr_t>((target&0xfffcULL)<<48)>>48) == target);\n");
             fprintf(fp, "deegen_cp_store32(deegen_dstAddr + %llu, tmp);\n",
                     static_cast<unsigned long long>(rr.m_offset));
 
@@ -1559,13 +1630,13 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
             fprintf(fp, "uint64_t target = deegen_patch_symval + %lluULL - (reinterpret_cast<uint64_t>(deegen_dstAddr) + %lluULL);\n",
                     static_cast<unsigned long long>(rr.m_addend),
                     static_cast<unsigned long long>(rr.m_offset));
-	    fprintf(fp, "uint32_t tmp = static_cast<uint32_t>(%lluU) + static_cast<uint32_t>((target>>2)&0x3FFFFFF);\n",
+            fprintf(fp, "uint32_t tmp = static_cast<uint32_t>(%lluU) | static_cast<uint32_t>((target>>2)&0x3FFFFFF);\n",
                     static_cast<unsigned long long>(oldVal));
-	    //fprintf(fp, "std::printf(\"%%#016lx\\n\", target);\n");
-	    //fprintf(fp, "std::printf(\"%s at %%#08llx\\n\", deegen_patch_symval + %lluULL);\n", rr.m_symbolName.c_str(), static_cast<unsigned long long>(rr.m_addend));
-	    //fprintf(fp, "std::printf(\"%%#08llx => %%02X %%02X %%02X %%02X\\n\", reinterpret_cast<uint64_t>(deegen_dstAddr) + %lluULL, (tmp)&0xFF, (tmp>>8)&0xFF, (tmp>>16)&0xFF, (tmp>>24)&0xFF);\n", static_cast<unsigned long long>(rr.m_offset));
-	    //fprintf(fp, "std::printf(\"================================================================================\\n\");\n");
-	    fprintf(fp, "assert(static_cast<uintptr_t>(static_cast<intptr_t>((target&0xffffffcULL)<<38)>>38) == target);\n");
+            //fprintf(fp, "std::printf(\"%%#016lx\\n\", target);\n");
+            //fprintf(fp, "std::printf(\"%s at %%#08llx\\n\", deegen_patch_symval + %lluULL);\n", rr.m_symbolName.c_str(), static_cast<unsigned long long>(rr.m_addend));
+            //fprintf(fp, "std::printf(\"%%#08llx => %%02X %%02X %%02X %%02X\\n\", reinterpret_cast<uint64_t>(deegen_dstAddr) + %lluULL, (tmp)&0xFF, (tmp>>8)&0xFF, (tmp>>16)&0xFF, (tmp>>24)&0xFF);\n", static_cast<unsigned long long>(rr.m_offset));
+            //fprintf(fp, "std::printf(\"================================================================================\\n\");\n");
+            fprintf(fp, "assert(static_cast<uintptr_t>(static_cast<intptr_t>((target&0xffffffcULL)<<36)>>36) == target);\n");
             fprintf(fp, "deegen_cp_store32(deegen_dstAddr + %llu, tmp);\n",
                     static_cast<unsigned long long>(rr.m_offset));
 

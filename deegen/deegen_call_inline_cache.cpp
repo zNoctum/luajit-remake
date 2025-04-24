@@ -551,8 +551,8 @@ static void InsertBaselineJitCallIcMagicAsmForClosureCall(llvm::Module* module,
     //
     // args: [i32 cb32, ptr cached_cb32] returns: void
     //
-    std::string asmText = "movz x1, #:abs_g1:$1; movk x1, #:abs_g0_nc:$1;cmp $0, x1;bne ${2:l};";
-    std::string constraintText = "r,i,!i,~{cc},~{dirflag},~{fpsr},~{flags},~{x1}";
+    std::string asmText = "movz x16, #:abs_g1:$1; movk x16, #:abs_g0_nc:$1;cmp $0, x16;bne ${2:l};";
+    std::string constraintText = "r,i,!i,~{cc},~{dirflag},~{fpsr},~{flags},~{x16}";
 
     ReleaseAssert(unique_ord <= 1000000000);
     asmText = "mov x0, #" + std::to_string(unique_ord) + ";" + asmText;
@@ -2456,8 +2456,6 @@ DeegenCallIcLogicCreator::BaselineJitCodegenResult WARN_UNUSED DeegenCallIcLogic
         Value* calleeCb = ExtractValueInst::Create(codeBlockAndEntryPoint, { 0 /*idx*/ }, "", insertIcDcModeBB);
         Value* codePointer = ExtractValueInst::Create(codeBlockAndEntryPoint, { 1 /*idx*/ }, "", insertIcDcModeBB);
 
-        // we need to do this because llvm changes the internal representation of the return type for reasons, WHY?????
-        //
         if (llvm_value_has_type<uint64_t>(calleeCb))
             calleeCb = new IntToPtrInst(calleeCb, llvm_type_of<void*>(ctx), "", insertIcDcModeBB);
         if (llvm_value_has_type<uint64_t>(codePointer))

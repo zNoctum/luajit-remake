@@ -1767,47 +1767,18 @@ struct X64PatchableJumpUtil
     static llvm::Value* WARN_UNUSED GetDest(llvm::Value* jmpEndAddr, llvm::BasicBlock* insertAtEnd)
     {
         using namespace llvm;
-        LLVMContext& ctx = jmpEndAddr->getContext();
+        Module* module = insertAtEnd->getParent()->getParent();
         ReleaseAssert(llvm_value_has_type<void*>(jmpEndAddr));
-        GetElementPtrInst* ptr = GetElementPtrInst::CreateInBounds(llvm_type_of<uint8_t>(ctx), jmpEndAddr,
-                                                                   { CreateLLVMConstantInt<uint64_t>(ctx, static_cast<uint64_t>(-4)) }, "", insertAtEnd);
-        Value* val32 = new LoadInst(llvm_type_of<uint32_t>(ctx), ptr, "", false /*isVolatile*/, Align(1), insertAtEnd);
-	Instruction* masked32 = CreateAnd(val32, CreateLLVMConstantInt<uint32_t>(ctx, static_cast<uint32_t>(0x3FFFFFF)));
-        insertAtEnd->getInstList().push_back(masked32);
-	Instruction* shl32 = CreateShl(masked32, CreateLLVMConstantInt<uint32_t>(ctx, static_cast<uint32_t>(6)));
-        insertAtEnd->getInstList().push_back(shl32);
-	Instruction* shr32 = CreateAShr(shl32, CreateLLVMConstantInt<uint32_t>(ctx, static_cast<uint32_t>(4)));
-        insertAtEnd->getInstList().push_back(shr32);
-        Value* val64 = new SExtInst(shr32, llvm_type_of<uint64_t>(ctx), "", insertAtEnd);
-	Instruction* adjusted64 = CreateAdd(val64, CreateLLVMConstantInt<uint64_t>(ctx, static_cast<uint64_t>(4)));
-        insertAtEnd->getInstList().push_back(adjusted64);
-        GetElementPtrInst* dest = GetElementPtrInst::CreateInBounds(llvm_type_of<uint8_t>(ctx), jmpEndAddr,
-                                                                    { adjusted64 }, "", insertAtEnd);
-        return dest;
+        return CreateCallToDeegenCommonSnippet(module, "GetJmpDest", { jmpEndAddr }, insertAtEnd);
     }
 
     static void SetDest(llvm::Value* jmpEndAddr, llvm::Value* newDest, llvm::BasicBlock* insertAtEnd)
     {
         using namespace llvm;
-        LLVMContext& ctx = jmpEndAddr->getContext();
+        Module* module = insertAtEnd->getParent()->getParent();
         ReleaseAssert(llvm_value_has_type<void*>(jmpEndAddr));
         ReleaseAssert(llvm_value_has_type<void*>(newDest));
-        Value* jmpEndAddr64 = new PtrToIntInst(jmpEndAddr, llvm_type_of<uint64_t>(ctx), "", insertAtEnd);
-        Value* newDest64 = new PtrToIntInst(newDest, llvm_type_of<uint64_t>(ctx), "", insertAtEnd);
-	Instruction* jmpAddr64 = CreateSub(jmpEndAddr64, CreateLLVMConstantInt<uint64_t>(ctx, static_cast<uint64_t>(4)));
-        insertAtEnd->getInstList().push_back(jmpAddr64);
-        Instruction* diff = CreateSub(newDest64, jmpAddr64);
-        insertAtEnd->getInstList().push_back(diff);
-        Value* diff32 = new TruncInst(diff, llvm_type_of<uint32_t>(ctx), "", insertAtEnd);
-	Instruction* adjusted32 = CreateShr(diff32, CreateLLVMConstantInt<uint32_t>(ctx, static_cast<uint32_t>(2)));
-        insertAtEnd->getInstList().push_back(adjusted32);
-	Instruction* masked32 = CreateAnd(adjusted32, CreateLLVMConstantInt<uint32_t>(ctx, static_cast<uint32_t>(0x03FFFFFF)));
-        insertAtEnd->getInstList().push_back(masked32);
-	Instruction* branch32 = CreateOr(masked32,    CreateLLVMConstantInt<uint32_t>(ctx, static_cast<uint32_t>(0x14000000)));
-        insertAtEnd->getInstList().push_back(branch32);
-        GetElementPtrInst* ptr = GetElementPtrInst::CreateInBounds(llvm_type_of<uint8_t>(ctx), jmpEndAddr,
-                                                                   { CreateLLVMConstantInt<uint64_t>(ctx, static_cast<uint64_t>(-4)) }, "", insertAtEnd);
-        new StoreInst(branch32, ptr, false /*isVolatile*/, Align(1), insertAtEnd);
+        CreateCallToDeegenCommonSnippet(module, "SetJmpDest", { jmpEndAddr, newDest }, insertAtEnd);
     }
 };
 

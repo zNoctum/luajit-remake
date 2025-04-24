@@ -386,6 +386,8 @@ void* WARN_UNUSED JitCallInlineCacheSite::InsertInDirectCallMode(uint16_t dcIcTr
             JitCallInlineCacheEntry* entry = linkListNode.AsPtr();
             assert(entry->GetIcTraitKind() == dcIcTraitKind);
 
+            std::printf("%p\n", entry->m_entity.As());
+            
             // We should never reach here if the IC ought to hit
             //
             assert(entry->m_entity.IsUserHeapPointer());

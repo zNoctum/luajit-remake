@@ -4,6 +4,7 @@
 #include "misc_llvm_helper.h"
 #include "deegen_engine_tier.h"
 #include "llvm/BinaryFormat/ELF.h"
+#include "drt/baseline_jit_codegen_helper.h"
 
 namespace dast {
 
@@ -181,8 +182,7 @@ struct DeegenStencilCodegenResult
     struct CondBrLatePatchRecord
     {
         size_t m_offset;
-	int8_t m_granule;
-        bool m_is64Bit;
+        BaselineJitCondBrLatePatchKind m_kind;
     };
 
     std::string m_cppCode;

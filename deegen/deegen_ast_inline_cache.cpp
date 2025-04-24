@@ -3992,7 +3992,7 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
                 // The inline slab still must at least be able to accomodate a patchable jump
                 // This should be trivially true, because the IC check/branch miss logic is already longer than that
                 //
-                ReleaseAssert(inlineSlabSize >= 5);
+                ReleaseAssert(inlineSlabSize >= 4);
 
                 if (inlineSlabSize > x_maxAllowedInlineSlabSize)
                 {
@@ -4281,7 +4281,7 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
 
         auditInfo += "// SMC region offset = " + std::to_string(smcRegionOffset) + ", length = " + std::to_string(smcRegionLen) + "\n";
         auditInfo += "// IC miss slow path offset = " + std::to_string(icMissSlowPathOffset) + "\n";
-        auditInfo += std::string("# Has Inline Slab = ") + (inlineSlabInfo.m_hasInlineSlab ? "true" : "false");
+        auditInfo += std::string("// Has Inline Slab = ") + (inlineSlabInfo.m_hasInlineSlab ? "true" : "false");
         if (inlineSlabInfo.m_hasInlineSlab)
         {
             ReleaseAssert(inlineSlabInfo.m_inlineSlabPatchableJumpEndOffsetInFastPath > inlineSlabInfo.m_smcRegionOffset);

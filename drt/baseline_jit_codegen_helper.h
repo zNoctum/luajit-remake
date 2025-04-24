@@ -4,6 +4,7 @@
 #include "ptr_utils.h"
 #include "jit_memory_allocator.h"
 #include "memory_ptr.h"
+#include <cstdint>
 
 // This struct name and member names are hardcoded as they are used by generated C++ code!
 //
@@ -48,16 +49,16 @@ enum class BaselineJitCondBrLatePatchKind : uint32_t
     Int64,
     // *(uint32_t*)ptr |= (dstAddr&0xFFFF)<<5;
     //
-    Int16G0,
+    G0,
     // *(uint32_t*)ptr |= ((dstAddr>>16)&0xFFFF)<<5;
     //
-    Int16G1,
+    G1,
     // *(uint32_t*)ptr |= ((dstAddr>>32)&0xFFFF)<<5;
     //
-    Int16G2,
+    G2,
     // *(uint32_t*)ptr |= ((dstAddr>>48)&0xFFFF)<<5;
     //
-    Int16G3
+    G3,
 };
 
 struct BaselineJitCondBrLatePatchRecord
@@ -75,30 +76,30 @@ struct BaselineJitCondBrLatePatchRecord
             UnalignedStore<uint32_t>(m_ptr, UnalignedLoad<uint32_t>(m_ptr) + static_cast<uint32_t>(jitAddr));
             break;
         }
-	case BaselineJitCondBrLatePatchKind::Int16G0:
-	{
+        case BaselineJitCondBrLatePatchKind::G0:
+        {
             uint32_t rel32 = (static_cast<uint32_t>(jitAddr)&0xFFFF)<<5;
             UnalignedStore<uint32_t>(m_ptr, UnalignedLoad<uint32_t>(m_ptr) + rel32);
             break;
-	}
-	case BaselineJitCondBrLatePatchKind::Int16G1:
-	{
+        }
+        case BaselineJitCondBrLatePatchKind::G1:
+        {
             uint32_t rel32 = ((static_cast<uint32_t>(jitAddr)>>16)&0xFFFF)<<5;
             UnalignedStore<uint32_t>(m_ptr, UnalignedLoad<uint32_t>(m_ptr) + rel32);
             break;
-	}
-	case BaselineJitCondBrLatePatchKind::Int16G2:
-	{
+        }
+        case BaselineJitCondBrLatePatchKind::G2:
+        {
             uint32_t rel32 = static_cast<uint32_t>(((reinterpret_cast<uint64_t>(m_ptr)>>32)&0xFFFF)<<5);
             UnalignedStore<uint32_t>(m_ptr, UnalignedLoad<uint32_t>(m_ptr) + rel32);
             break;
-	}
-	case BaselineJitCondBrLatePatchKind::Int16G3:
-	{
+        }
+        case BaselineJitCondBrLatePatchKind::G3:
+        {
             uint32_t rel32 = static_cast<uint32_t>(((reinterpret_cast<uint64_t>(m_ptr)>>48)&0xFFFF)<<5);
             UnalignedStore<uint32_t>(m_ptr, UnalignedLoad<uint32_t>(m_ptr) + rel32);
             break;
-	}
+        }
         case BaselineJitCondBrLatePatchKind::SlowPathData:
         {
             UnalignedStore<uint32_t>(m_ptr, static_cast<uint32_t>(jitAddr));
