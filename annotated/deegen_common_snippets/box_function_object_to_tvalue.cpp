@@ -5,9 +5,7 @@
 
 static TValue DeegenSnippet_BoxFunctionObjectToTValue(FunctionObject* func)
 {
-    TValue tv = TValue::Create<tFunction>(func);
-    assert(tv.Is<tFunction>());
-    return tv;
+    return TValue::Create<tFunction>(func);
 }
 
 DEFINE_DEEGEN_COMMON_SNIPPET("BoxFunctionObjectToTValue", DeegenSnippet_BoxFunctionObjectToTValue)

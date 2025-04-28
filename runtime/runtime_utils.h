@@ -333,13 +333,20 @@ public:
         size_t i = 0;
         do {
             uint8_t* addr = jitBaseAddr + trait->m_codePtrPatchRecords[i].m_offset;
-            if (trait->m_codePtrPatchRecords[i].m_is64)
+            switch (trait->m_codePtrPatchRecords[i].m_kind)
             {
-                UnalignedStore<uint64_t>(addr, UnalignedLoad<uint64_t>(addr) + diff);
-            }
-            else
-            {
+            case JitCallInlineCacheTraits::PatchRecordKind::G0:
+            case JitCallInlineCacheTraits::PatchRecordKind::G1:
+            case JitCallInlineCacheTraits::PatchRecordKind::G2:
+            case JitCallInlineCacheTraits::PatchRecordKind::G3:
+                ReleaseAssert(false);
+                break;
+            case JitCallInlineCacheTraits::PatchRecordKind::Int32:
                 UnalignedStore<uint32_t>(addr, UnalignedLoad<uint32_t>(addr) + static_cast<uint32_t>(diff));
+                break;
+            case JitCallInlineCacheTraits::PatchRecordKind::Int64:
+                UnalignedStore<uint64_t>(addr, UnalignedLoad<uint64_t>(addr) + diff);
+                break;
             }
             i++;
         } while (unlikely(i < numPatches));

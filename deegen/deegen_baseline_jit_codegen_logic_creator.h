@@ -23,7 +23,7 @@ struct DeegenBytecodeBaselineJitInfo
         size_t m_ordInTraitTable;
         size_t m_allocationLength;
         bool m_isDirectCall;
-        std::vector<std::pair<size_t /*offset*/, bool /*is64*/>> m_codePtrPatchRecords;
+        std::vector<std::pair<size_t /*offset*/, JitCallInlineCacheTraits::PatchRecordKind>> m_codePtrPatchRecords;
     };
 
     std::vector<CallIcTraitDesc> m_allCallIcTraitDescs;

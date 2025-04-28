@@ -386,7 +386,7 @@ void* WARN_UNUSED JitCallInlineCacheSite::InsertInDirectCallMode(uint16_t dcIcTr
             JitCallInlineCacheEntry* entry = linkListNode.AsPtr();
             assert(entry->GetIcTraitKind() == dcIcTraitKind);
 
-            std::printf("%p\n", entry->m_entity.As());
+            std::printf("=> %#08lx\n", TValue::Create<tFunction>(reinterpret_cast<FunctionObject*>(entry->m_entity.As())).m_value);
             
             // We should never reach here if the IC ought to hit
             //

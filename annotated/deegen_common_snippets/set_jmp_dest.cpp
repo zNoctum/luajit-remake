@@ -29,8 +29,8 @@ static void DeegenSnippet_SetJmpDest(uint32_t* jmpEndAddr, void* newDest)
     
     // std::printf("%02X %02X %02X %02X\n", 0xFF&instr, (instr>>8)&0xFF, (instr>>16)&0xFF, (instr>>24)&0xFF);
     *instrAddr = instr;
+    __builtin___clear_cache(reinterpret_cast<char*>(instrAddr), reinterpret_cast<char*>(instrAddr+1));
     return;
-    //assert(false && "unexpected instruction for destination change!");
 }
 
 DEFINE_DEEGEN_COMMON_SNIPPET("SetJmpDest", DeegenSnippet_SetJmpDest)

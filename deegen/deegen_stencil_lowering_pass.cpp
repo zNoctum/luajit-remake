@@ -1,4 +1,5 @@
 #include "deegen_stencil_lowering_pass.h"
+#include "deegen_parse_asm_text.h"
 #include "deegen_recover_asm_cfg.h"
 #include "llvm/Analysis/BranchProbabilityInfo.h"
 #include "llvm/Analysis/CFG.h"
@@ -429,6 +430,104 @@ void DeegenStencilLoweringPass::RunAsmRewritePhase(const std::string& asmFile)
         }
 
         RunAsmHotColdSplittingPass(file /*inout*/, m_coldBlocks, forceFastPathBlocks, forceSlowPathBlocks);
+
+        std::map<std::string, std::optional<std::string /*slowPathVeneerLabel*/>> fastPathBlockLabels;
+        for (X64AsmBlock* block : file->m_blocks)
+        {
+            fastPathBlockLabels.insert(std::make_pair(block->m_normalizedLabelName, std::nullopt));
+        }
+
+        std::map<std::string, std::optional<std::string /*fastPathVeneerLabel*/>> slowPathBlockLabels;
+        for (X64AsmBlock* block : file->m_slowpath)
+        {
+            slowPathBlockLabels.insert(std::make_pair(block->m_normalizedLabelName, std::nullopt));
+        }
+
+        std::vector<X64AsmBlock*> fastPathVeneers;
+        for (X64AsmBlock* block : file->m_blocks)
+        {
+            for (size_t i = 0; i < block->m_lines.size(); i++)
+            {
+                if (block->m_lines[i].NumWords() <= 3 || !block->m_lines[i].GetWord(0).starts_with("tb"))
+                    continue;
+
+                std::string label = block->m_lines[i].GetWord(3);
+                if (!slowPathBlockLabels.count(label))
+                    continue;
+
+                auto opt = slowPathBlockLabels.find(label);
+
+                if (auto veneerLabel = opt->second)
+                {
+                    block->m_lines[i].GetWord(3) = *veneerLabel;
+                }
+                else
+                {
+                    std::string newVeneerLabel = file->m_labelNormalizer.GetUniqueLabel();
+                    std::unique_ptr<X64AsmBlock> veneer = std::make_unique<X64AsmBlock>();
+                    veneer->m_prefixText = newVeneerLabel + ":\n";
+                    veneer->m_normalizedLabelName = newVeneerLabel;
+                    veneer->m_endsWithJmpToLocalLabel = true;
+                    veneer->m_terminalJmpTargetLabel = label;
+                    veneer->m_lines.push_back(X64AsmLine::Parse("\tb\t" + label));
+
+                    block->m_lines[i].GetWord(3) = newVeneerLabel;
+
+                    slowPathBlockLabels.insert_or_assign(label, std::optional<std::string>{newVeneerLabel});
+
+                    fastPathVeneers.push_back(veneer.get());
+                    file->m_blockHolders.push_back(std::move(veneer));
+                }
+            }
+        }
+
+        for (X64AsmBlock* block : fastPathVeneers)
+        {
+            file->m_blocks.push_back(block);
+        }
+
+        std::vector<X64AsmBlock*> slowPathVeneers;
+        for (X64AsmBlock* block : file->m_slowpath)
+        {
+            for (size_t i = 0; i < block->m_lines.size(); i++)
+            {
+                if (block->m_lines[i].NumWords() <= 3 || !block->m_lines[i].GetWord(0).starts_with("tb"))
+                    continue;
+
+                std::string label = block->m_lines[i].GetWord(3);
+                if (!fastPathBlockLabels.count(label))
+                    continue;
+
+                auto opt = fastPathBlockLabels.find(label);
+
+                if (auto veneerLabel = opt->second)
+                {
+                    block->m_lines[i].GetWord(3) = *veneerLabel;
+                }
+                else
+                {
+                    std::string newVeneerLabel = file->m_labelNormalizer.GetUniqueLabel();
+                    std::unique_ptr<X64AsmBlock> veneer = std::make_unique<X64AsmBlock>();
+                    veneer->m_prefixText = newVeneerLabel + ":\n";
+                    veneer->m_normalizedLabelName = newVeneerLabel;
+                    veneer->m_endsWithJmpToLocalLabel = true;
+                    veneer->m_terminalJmpTargetLabel = label;
+                    veneer->m_lines.push_back(X64AsmLine::Parse("\tb\t" + label));
+
+                    block->m_lines[i].GetWord(3) = newVeneerLabel;
+
+                    slowPathBlockLabels.insert_or_assign(label, std::optional<std::string>{newVeneerLabel});
+
+                    slowPathVeneers.push_back(veneer.get());
+                    file->m_blockHolders.push_back(std::move(veneer));
+                }
+            }
+        }
+
+        for (X64AsmBlock* block : slowPathVeneers)
+        {
+            file->m_slowpath.push_back(block);
+        }
     }
 
     file->Validate();

@@ -179,10 +179,19 @@ constexpr size_t x_baselineJitFunctionEntrySpecializeThresholdForVarargsFunction
 //
 struct alignas(4) JitCallInlineCacheTraits
 {
+    enum class PatchRecordKind : uint16_t {
+        G0,
+        G1,
+        G2,
+        G3,
+        Int32,
+        Int64
+    };
+
     struct alignas(4) PatchRecord
     {
         uint16_t m_offset;
-        bool m_is64;
+        PatchRecordKind m_kind;
     };
     static_assert(sizeof(PatchRecord) == 4);
 
@@ -225,7 +234,7 @@ struct JitCallInlineCacheTraitsHolder final : public JitCallInlineCacheTraits
         for (size_t i = 0; i < N; i++)
         {
             ReleaseAssert(patches[i].m_offset < x_jit_mem_alloc_stepping_array[allocLengthStepping]);
-            ReleaseAssert(patches[i].m_offset + (patches[i].m_is64 ? 8 : 4) <= x_jit_mem_alloc_stepping_array[allocLengthStepping]);
+            ReleaseAssert(patches[i].m_offset + (patches[i].m_kind == JitCallInlineCacheTraits::PatchRecordKind::Int64 ? 8 : 4) <= x_jit_mem_alloc_stepping_array[allocLengthStepping]);
             m_recordsHolder[i] = patches[i];
         }
     }

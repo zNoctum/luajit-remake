@@ -176,12 +176,33 @@ void FPS_ProcessBytecodeDefinitionForBaselineJit()
                 for (size_t i = 0; i < icTrait.m_codePtrPatchRecords.size(); i++)
                 {
                     uint64_t offset = icTrait.m_codePtrPatchRecords[i].first;
-                    bool is64 = icTrait.m_codePtrPatchRecords[i].second;
+                    std::string kindStr;
+                    switch (icTrait.m_codePtrPatchRecords[i].second)
+                    {
+                    case JitCallInlineCacheTraits::PatchRecordKind::G0:
+                        kindStr = "JitCallInlineCacheTraits::PatchRecordKind::G0";
+                        break;
+                    case JitCallInlineCacheTraits::PatchRecordKind::G1:
+                        kindStr = "JitCallInlineCacheTraits::PatchRecordKind::G1";
+                        break;
+                    case JitCallInlineCacheTraits::PatchRecordKind::G2:
+                        kindStr = "JitCallInlineCacheTraits::PatchRecordKind::G2";
+                        break;
+                    case JitCallInlineCacheTraits::PatchRecordKind::G3:
+                        kindStr = "JitCallInlineCacheTraits::PatchRecordKind::G3";
+                        break;
+                    case JitCallInlineCacheTraits::PatchRecordKind::Int32:
+                        kindStr = "JitCallInlineCacheTraits::PatchRecordKind::Int32";
+                        break;
+                    case JitCallInlineCacheTraits::PatchRecordKind::Int64:
+                        kindStr = "JitCallInlineCacheTraits::PatchRecordKind::Int64";
+                        break;
+                    }
                     ReleaseAssert(offset <= 65535);
                     if (i > 0) { fprintf(hdrFp, ","); }
                     fprintf(hdrFp, "\n        JitCallInlineCacheTraits::PatchRecord {\n");
                     fprintf(hdrFp, "            .m_offset = %llu,\n", static_cast<unsigned long long>(offset));
-                    fprintf(hdrFp, "            .m_is64 = %s\n", (is64 ? "true" : "false"));
+                    fprintf(hdrFp, "            .m_kind = %s\n", kindStr.c_str());
                     fprintf(hdrFp, "        }");
                 }
                 fprintf(hdrFp, "\n    });\n\n");

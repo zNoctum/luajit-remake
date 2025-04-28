@@ -224,8 +224,8 @@ struct DeegenCallIcLogicCreator
         // Each item is a pair <offset, is64>, meaning the 32/64-bit value at address 'icAddr + offset' shall be patched
         // by adding (newCodePtr - oldCodePtr).
         //
-        std::vector<std::pair<size_t /*offset*/, bool /*is64*/>> m_dcIcCodePtrPatchRecords;
-        std::vector<std::pair<size_t /*offset*/, bool /*is64*/>> m_ccIcCodePtrPatchRecords;
+        std::vector<std::pair<size_t /*offset*/, JitCallInlineCacheTraits::PatchRecordKind>> m_dcIcCodePtrPatchRecords;
+        std::vector<std::pair<size_t /*offset*/, JitCallInlineCacheTraits::PatchRecordKind>> m_ccIcCodePtrPatchRecords;
 
         // The JIT code size of this IC in bytes
         // Note that for simplicity, currently we always put the data section (if exists) right after the code section,

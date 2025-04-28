@@ -1156,7 +1156,6 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
     if (isForIc)
     {
         fprintf(fp, "[[maybe_unused]] uint64_t deegen_veneerOffset = 0;\n");
-        fprintf(fp, "std::printf(\"Address of IC: %%#08lx\\n\", reinterpret_cast<uint64_t>(deegen_dstAddr));\n");
     }
 
     /*
@@ -1465,7 +1464,7 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
                     static_cast<unsigned long long>(rr.m_offset));
             if (isForIc)
             {
-                fprintf(fp, "std::printf(\"G3: %s(%d) at %%#08llx\\n\", deegen_patch_symval + %lluULL);\n", rr.m_symbolName.c_str(), rr.m_symKind, static_cast<unsigned long long>(rr.m_addend));
+                // fprintf(fp, "std::printf(\"G3: %s(%d) at %%#08llx\\n\", deegen_patch_symval + %lluULL);\n", rr.m_symbolName.c_str(), rr.m_symKind, static_cast<unsigned long long>(rr.m_addend));
             }
 
             fprintf(fp, "}\n");

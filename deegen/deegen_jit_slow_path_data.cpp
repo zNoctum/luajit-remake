@@ -217,7 +217,7 @@ void BaselineJitSlowPathDataLayout::ComputeLayout(BytecodeVariantDefinition* bvd
         assignOffsetAndAdvance(m_condBrJitAddr);
         assignOffsetAndAdvance(m_condBrBcIndex);
         ReleaseAssert(m_condBrJitAddr.GetFieldSize() == 8);
-	ReleaseAssert(m_condBrBcIndex.GetFieldSize() == 4);
+        ReleaseAssert(m_condBrBcIndex.GetFieldSize() == 4);
         ReleaseAssert(m_condBrJitAddr.GetFieldOffset() + 8 == m_condBrBcIndex.GetFieldOffset());
     }
 

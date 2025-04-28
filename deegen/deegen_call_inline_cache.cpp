@@ -8,6 +8,7 @@
 #include "deegen_magic_asm_helper.h"
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/Linker/Linker.h"
+#include <llvm/Analysis/ScalarEvolutionExpressions.h>
 #include "deegen_parse_asm_text.h"
 #include "invoke_clang_helper.h"
 #include "drt/baseline_jit_codegen_helper.h"
@@ -495,7 +496,7 @@ static void InsertBaselineJitCallIcMagicAsmForDirectCall(llvm::Module* module,
     //
     // Therefore, we must teach LLVM that the direct-call check may directly branch to IC slow path by putting it in the GOTO list as well.
     //
-    std::string asmText = "movz $0, #:abs_g3:$2;movk $0, #:abs_g2_nc:$2; movk $0, #:abs_g1_nc:$2; movk $0, #:abs_g0_nc:$2;cmp $1, $0;bne ${3:l};bne ${4:l};";
+    std::string asmText = "mov $0, #:abs_g3:$2;movk $0, #:abs_g2_nc:$2; movk $0, #:abs_g1_nc:$2; movk $0, #:abs_g0_nc:$2;cmp $0, $1;b.ne ${3:l};b.ne ${4:l};";
     std::string constraintText = "=&r,r,i,!i,!i,~{cc},~{dirflag},~{fpsr},~{flags}";
 
     ReleaseAssert(unique_ord <= 0xFFFF);
@@ -551,7 +552,7 @@ static void InsertBaselineJitCallIcMagicAsmForClosureCall(llvm::Module* module,
     //
     // args: [i32 cb32, ptr cached_cb32] returns: void
     //
-    std::string asmText = "movz x16, #:abs_g1:$1; movk x16, #:abs_g0_nc:$1;cmp $0, x16;bne ${2:l};";
+    std::string asmText = "movz x16, #:abs_g1:$1; movk x16, #:abs_g0_nc:$1;cmp x16, $0;b.ne ${2:l};";
     std::string constraintText = "r,i,!i,~{cc},~{dirflag},~{fpsr},~{flags},~{x16}";
 
     ReleaseAssert(unique_ord <= 1000000000);
@@ -1511,7 +1512,7 @@ struct CreateCodegenCallIcLogicImplResult
 {
     std::unique_ptr<llvm::Module> m_module;
     std::string m_disasmForAudit;
-    std::vector<std::pair<size_t /*offset*/, bool /*is64*/>> m_codePtrPatchRecords;
+    std::vector<std::pair<size_t /*offset*/, JitCallInlineCacheTraits::PatchRecordKind>> m_codePtrPatchRecords;
     size_t m_icSize;
     std::string m_resFnName;
 };
@@ -1809,7 +1810,7 @@ static CreateCodegenCallIcLogicImplResult WARN_UNUSED CreateCodegenCallIcLogicIm
 
     RunLLVMOptimizePass(module.get());
 
-    std::vector<std::pair<size_t /*offset*/, bool /*is64*/>> codePtrPatchRecords;
+    std::vector<std::pair<size_t /*offset*/, JitCallInlineCacheTraits::PatchRecordKind>> codePtrPatchRecords;
     auto scanRelocationListForCodePtrPatches = [&](const std::vector<RelocationRecord>& rlist, size_t baseOffset)
     {
         for (const RelocationRecord& rr : rlist)
@@ -1818,8 +1819,32 @@ static CreateCodegenCallIcLogicImplResult WARN_UNUSED CreateCodegenCallIcLogicIm
             {
                 if (rr.m_stencilHoleOrd == CP_PLACEHOLDER_CALL_IC_CALLEE_CODE_PTR)
                 {
-                    bool is64 = (rr.m_relocationType == ELF::R_X86_64_64);
-                    codePtrPatchRecords.push_back(std::make_pair(baseOffset + rr.m_offset, is64));
+                    JitCallInlineCacheTraits::PatchRecordKind kind;
+                    switch (rr.m_relocationType)
+                    {
+                    case ELF::R_AARCH64_MOVW_UABS_G0:
+                    case ELF::R_AARCH64_MOVW_UABS_G0_NC:
+                        kind = JitCallInlineCacheTraits::PatchRecordKind::G0;
+                        break;
+                    case ELF::R_AARCH64_MOVW_UABS_G1:
+                    case ELF::R_AARCH64_MOVW_UABS_G1_NC:
+                        kind = JitCallInlineCacheTraits::PatchRecordKind::G1;
+                        break;
+                    case ELF::R_AARCH64_MOVW_UABS_G2:
+                    case ELF::R_AARCH64_MOVW_UABS_G2_NC:
+                        kind = JitCallInlineCacheTraits::PatchRecordKind::G2;
+                        break;
+                    case ELF::R_AARCH64_MOVW_UABS_G3:
+                        kind = JitCallInlineCacheTraits::PatchRecordKind::G3;
+                        break;
+                    case ELF::R_X86_64_64:
+                        kind = JitCallInlineCacheTraits::PatchRecordKind::Int64;
+                        break;
+                    default:
+                        kind = JitCallInlineCacheTraits::PatchRecordKind::Int32;
+                        break;
+                    }
+                    codePtrPatchRecords.push_back(std::make_pair(baseOffset + rr.m_offset, kind));
                 }
             }
         }
@@ -1832,9 +1857,9 @@ static CreateCodegenCallIcLogicImplResult WARN_UNUSED CreateCodegenCallIcLogicIm
 
     for (size_t i = 0; i + 1 < codePtrPatchRecords.size(); i++)
     {
-        ReleaseAssert(codePtrPatchRecords[i].first + (codePtrPatchRecords[i].second ? 8 : 4) <= codePtrPatchRecords[i + 1].first);
+        ReleaseAssert(codePtrPatchRecords[i].first + (codePtrPatchRecords[i].second == JitCallInlineCacheTraits::PatchRecordKind::Int64 ? 8 : 4) <= codePtrPatchRecords[i + 1].first);
     }
-    ReleaseAssertImp(codePtrPatchRecords.size() > 0, codePtrPatchRecords.back().first + (codePtrPatchRecords.back().second ? 8 : 4) <= codeAndData.size());
+    ReleaseAssertImp(codePtrPatchRecords.size() > 0, codePtrPatchRecords.back().first + (codePtrPatchRecords.back().second == JitCallInlineCacheTraits::PatchRecordKind::Int64 ? 8 : 4) <= codeAndData.size());
 
     return {
         .m_module = std::move(module),
@@ -2659,7 +2684,7 @@ DeegenCallIcLogicCreator::BaselineJitCodegenResult WARN_UNUSED DeegenCallIcLogic
         disasmForAudit += "# Direct-call IC CodePtr patch records:\n";
         for (auto& item : dcRes.m_codePtrPatchRecords)
         {
-            disasmForAudit += std::string("#     offset = ") + std::to_string(item.first) + (item.second ? " (64-bit)\n" : " (32-bit)\n");
+            disasmForAudit += std::string("#     offset = ") + std::to_string(item.first) + (item.second == JitCallInlineCacheTraits::PatchRecordKind::Int64 ? " (64-bit)\n" : " (32-bit)\n");
         }
         disasmForAudit += "\n";
 
@@ -2667,7 +2692,7 @@ DeegenCallIcLogicCreator::BaselineJitCodegenResult WARN_UNUSED DeegenCallIcLogic
         disasmForAudit += "# Closure-call IC CodePtr patch records:\n";
         for (auto& item : ccRes.m_codePtrPatchRecords)
         {
-            disasmForAudit += std::string("#     offset = ") + std::to_string(item.first) + (item.second ? " (64-bit)\n" : " (32-bit)\n");
+            disasmForAudit += std::string("#     offset = ") + std::to_string(item.first) + (item.second == JitCallInlineCacheTraits::PatchRecordKind::Int64 ? " (64-bit)\n" : " (32-bit)\n");
         }
         disasmForAudit += "\n";
     }

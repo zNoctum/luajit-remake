@@ -1085,9 +1085,6 @@ void X64AsmFile::Validate()
             }
             for (size_t k = 0; k + 1 < block->m_lines.size(); k++)
             {
-                if (block->m_lines[k].IsDefinitelyBarrierInst())
-                    for (size_t l = 0; l < block->m_lines.size(); l++)
-                        std::cout << block->m_lines[l].ToString() << std::endl;
                 ReleaseAssert(!block->m_lines[k].IsDefinitelyBarrierInst());
             }
             ReleaseAssert(block->m_lines.back().IsDefinitelyBarrierInst());
