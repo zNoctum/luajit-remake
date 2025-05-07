@@ -14,15 +14,15 @@ static void* DeegenSnippet_GetJmpDest(uint32_t* jmpEndAddr)
     // BL and B instructions
     // 
     if ((ident&0x7c) == 0x14) {
-        diff = ((instr&MASK(26))<<38)>>38;
+        diff = (static_cast<int64_t>(instr)<<38)>>36;
     // B.cc and BC.cc instructions
     //
     } else if (ident == 0x54) {
-        diff = ((instr&MASK(19))<<45)>>45;
+        diff = (static_cast<int64_t>(instr)<<45)>>43;
     } else {
         assert(false && "unexpected instruction for destination retrieval!");
     }
-    return reinterpret_cast<void*>(instrAddr + diff);
+    return reinterpret_cast<void*>(reinterpret_cast<uint64_t>(instrAddr) + static_cast<uint64_t>(diff));
 }
 
 DEFINE_DEEGEN_COMMON_SNIPPET("GetJmpDest", DeegenSnippet_GetJmpDest)

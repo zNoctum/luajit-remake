@@ -324,27 +324,42 @@ public:
     //
     // diff := (uint64_t)newCodePtr - (uint64_t)oldCodePtr
     //
-    void UpdateTargetFunctionCodePtr(uint64_t diff)
+    void UpdateTargetFunctionCodePtr(uint64_t newCodePtr, uint64_t oldCodePtr)
     {
         const JitCallInlineCacheTraits* trait = GetIcTrait();
         uint8_t* jitBaseAddr = GetJitRegionStart();
         size_t numPatches = trait->m_numCodePtrUpdatePatches;
         assert(numPatches > 0);
         size_t i = 0;
+
+        uint64_t diff = newCodePtr - oldCodePtr;
+
+        auto updateInstr = [=](uint32_t instr, uint32_t shift) {
+            return (instr&0xFFE0001F) + (((static_cast<uint32_t>(newCodePtr>>shift))&0xFFFF)<<5);
+        };
+
         do {
             uint8_t* addr = jitBaseAddr + trait->m_codePtrPatchRecords[i].m_offset;
             switch (trait->m_codePtrPatchRecords[i].m_kind)
             {
             case JitCallInlineCacheTraits::PatchRecordKind::G0:
+                UnalignedStore<uint32_t>(addr, updateInstr(UnalignedLoad<uint32_t>(addr), 0));
+                break;
             case JitCallInlineCacheTraits::PatchRecordKind::G1:
+                UnalignedStore<uint32_t>(addr, updateInstr(UnalignedLoad<uint32_t>(addr), 16));
+                break;
             case JitCallInlineCacheTraits::PatchRecordKind::G2:
+                UnalignedStore<uint32_t>(addr, updateInstr(UnalignedLoad<uint32_t>(addr), 32));
+                break;
             case JitCallInlineCacheTraits::PatchRecordKind::G3:
-                ReleaseAssert(false);
+                UnalignedStore<uint32_t>(addr, updateInstr(UnalignedLoad<uint32_t>(addr), 48));
                 break;
             case JitCallInlineCacheTraits::PatchRecordKind::Int32:
+                ReleaseAssert(false);
                 UnalignedStore<uint32_t>(addr, UnalignedLoad<uint32_t>(addr) + static_cast<uint32_t>(diff));
                 break;
             case JitCallInlineCacheTraits::PatchRecordKind::Int64:
+                ReleaseAssert(false);
                 UnalignedStore<uint64_t>(addr, UnalignedLoad<uint64_t>(addr) + diff);
                 break;
             }

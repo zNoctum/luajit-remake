@@ -1661,6 +1661,7 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
         }
         }
     }
+    fprintf(fp, "__builtin___clear_cache(reinterpret_cast<char*>(deegen_dstAddr), reinterpret_cast<char*>(deegen_dstAddr + %lluULL));\n", static_cast<unsigned long long>(codeLen));
 
     fclose(fp);
     res.m_cppCode = file.GetFileContents();

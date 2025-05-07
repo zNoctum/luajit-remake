@@ -2189,7 +2189,7 @@ DeegenCallIcLogicCreator::BaselineJitCodegenResult WARN_UNUSED DeegenCallIcLogic
     ReleaseAssert(smcRegionOffset + smcRegionLength <= mainLogicStencil.m_fastPathCode.size());
     // The SMC region should at least be long enough to hold a jmp instruction, check that for sanity
     //
-    ReleaseAssert(smcRegionLength >= 5);
+    ReleaseAssert(smcRegionLength >= 4);
 
     size_t dcIcMissDestOffset = mainLogicStencil.RetrieveLabelDistanceComputationResult(icInfo.m_symbolNameForDcIcMissLogicLabelOffset);
     ReleaseAssert(dcIcMissDestOffset < mainLogicStencil.m_slowPathCode.size());
@@ -2594,8 +2594,6 @@ DeegenCallIcLogicCreator::BaselineJitCodegenResult WARN_UNUSED DeegenCallIcLogic
         Value* calleeCb = ExtractValueInst::Create(codeBlockAndEntryPoint, { 0 /*idx*/ }, "", insertIcCcModeBB);
         Value* codePointer = ExtractValueInst::Create(codeBlockAndEntryPoint, { 1 /*idx*/ }, "", insertIcCcModeBB);
 
-        // we need to do this because llvm changes the internal representation of the return type for reasons, WHY?????
-        //
         if (llvm_value_has_type<uint64_t>(calleeCb))
             calleeCb = new IntToPtrInst(calleeCb, llvm_type_of<void*>(ctx), "", insertIcCcModeBB);
         if (llvm_value_has_type<uint64_t>(codePointer))

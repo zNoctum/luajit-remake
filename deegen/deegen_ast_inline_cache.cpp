@@ -4298,7 +4298,7 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
     {
         finalRes.m_icTraitInfo.push_back({
             .m_ordInTraitTable = it.first,
-            .m_allocationLength = it.second
+            .m_allocationLength = it.second + 20*16
         });
     }
 

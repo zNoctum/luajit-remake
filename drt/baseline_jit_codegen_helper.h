@@ -73,6 +73,7 @@ struct BaselineJitCondBrLatePatchRecord
         {
         case BaselineJitCondBrLatePatchKind::Int32:
         {
+            assert(false);
             UnalignedStore<uint32_t>(m_ptr, UnalignedLoad<uint32_t>(m_ptr) + static_cast<uint32_t>(jitAddr));
             break;
         }
@@ -102,12 +103,13 @@ struct BaselineJitCondBrLatePatchRecord
         }
         case BaselineJitCondBrLatePatchKind::SlowPathData:
         {
-            UnalignedStore<uint32_t>(m_ptr, static_cast<uint32_t>(jitAddr));
-            UnalignedStore<uint32_t>(m_ptr + 4, static_cast<uint32_t>(bytecodeOrd));
+            UnalignedStore<uint64_t>(m_ptr,     static_cast<uint64_t>(jitAddr));
+            UnalignedStore<uint32_t>(m_ptr + 8, static_cast<uint32_t>(bytecodeOrd));
             break;
         }
         case BaselineJitCondBrLatePatchKind::Int64: [[unlikely]]
         {
+            assert(false);
             UnalignedStore<uint64_t>(m_ptr, UnalignedLoad<uint64_t>(m_ptr) + jitAddr);
             break;
         }

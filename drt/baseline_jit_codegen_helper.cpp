@@ -270,7 +270,7 @@ BaselineCodeBlock* NO_INLINE deegen_baseline_jit_do_codegen(CodeBlock* cb)
 
             // Currently the slowPathData always start with the opcode, followed immediately by the jitAddr for this bytecode
             //
-            uint32_t jitAddr = UnalignedLoad<uint32_t>(slowPathDataStruct + sizeof(BytecodeOpcodeTy));
+            uint64_t jitAddr = UnalignedLoad<uint64_t>(slowPathDataStruct + sizeof(BytecodeOpcodeTy));
             rec.Patch(jitAddr, static_cast<uint32_t>(bytecodeIndex));
         }
     }
@@ -362,10 +362,10 @@ BaselineCodeBlockAndEntryPoint NO_INLINE WARN_UNUSED deegen_prepare_osr_entry_in
 
     // Currently the slowPathData always start with the opcode, followed immediately by the jitAddr for this bytecode
     //
-    uint32_t jitAddr = UnalignedLoad<uint32_t>(slowPathDataStruct + sizeof(BytecodeOpcodeTy));
+    uint64_t jitAddr = UnalignedLoad<uint64_t>(slowPathDataStruct + sizeof(BytecodeOpcodeTy));
 
     return {
         .baselineCodeBlock = bcb,
-        .entryPoint = reinterpret_cast<void*>(static_cast<uint64_t>(jitAddr))
+        .entryPoint = reinterpret_cast<void*>(jitAddr)
     };
 }

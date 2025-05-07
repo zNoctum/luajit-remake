@@ -165,10 +165,9 @@ void CodeBlock::UpdateBestEntryPoint(void* newEntryPoint)
     // Update all JIT call IC to use the new entry point
     //
     {
-        uint64_t diff = reinterpret_cast<uint64_t>(newEntryPoint) - reinterpret_cast<uint64_t>(oldBestEntryPoint);
         for (JitCallInlineCacheEntry* icEntry : m_jitCallIcList.elements())
         {
-            icEntry->UpdateTargetFunctionCodePtr(diff);
+            icEntry->UpdateTargetFunctionCodePtr(reinterpret_cast<uint64_t>(newEntryPoint), reinterpret_cast<uint64_t>(oldBestEntryPoint));
         }
     }
 
@@ -386,8 +385,6 @@ void* WARN_UNUSED JitCallInlineCacheSite::InsertInDirectCallMode(uint16_t dcIcTr
             JitCallInlineCacheEntry* entry = linkListNode.AsPtr();
             assert(entry->GetIcTraitKind() == dcIcTraitKind);
 
-            std::printf("=> %#08lx\n", TValue::Create<tFunction>(reinterpret_cast<FunctionObject*>(entry->m_entity.As())).m_value);
-            
             // We should never reach here if the IC ought to hit
             //
             assert(entry->m_entity.IsUserHeapPointer());
