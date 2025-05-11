@@ -144,10 +144,10 @@ std::string WARN_UNUSED CompileLLVMModuleToAssemblyFileForStencilGeneration(llvm
     return CompileLLVMModuleToAssemblyFileForStencilGeneration(module, relocationModel, codeModel, [](llvm::TargetOptions&) { }, false);
 }
 
-std::string WARN_UNUSED CompileLLVMModuleToAssemblyFileForStencilGeneration(llvm::Module* module, llvm::Reloc::Model relocationModel, llvm::CodeModel::Model codeModel, const std::function<void(llvm::TargetOptions&)>& targetOptionsTweaker, bool ellideLRFP)
+std::string WARN_UNUSED CompileLLVMModuleToAssemblyFileForStencilGeneration(llvm::Module* module, llvm::Reloc::Model relocationModel, llvm::CodeModel::Model codeModel, const std::function<void(llvm::TargetOptions&)>& targetOptionsTweaker, bool)
 {
     ScopeOverrideLLVMOption<bool> overrideIndirectBranch("add-indirect-branch-dest-annotation-for-deegen", true);
-    ScopeOverrideLLVMOption<bool> overrideDeegenSaveLRFP("generate-deegen-stencil-code", ellideLRFP);
+    // ScopeOverrideLLVMOption<bool> overrideDeegenSaveLRFP("generate-deegen-stencil-code", ellideLRFP);
     return CompileLLVMModuleToAssemblyFile(module, relocationModel, codeModel, [&](llvm::TargetOptions& targetOptions) {
         // Required for indirect branch dest annotation
         //

@@ -205,7 +205,7 @@ void BaselineJitImplCreator::DoLowering(BytecodeIrInfo* bii, const DeegenGlobalB
             //
             opt.DataSections = true;
         },
-	true /*ellideLRFP*/);
+    true /*ellideLRFP*/);
 
     // Run the ASM phase of the stencil lowering pass
     //

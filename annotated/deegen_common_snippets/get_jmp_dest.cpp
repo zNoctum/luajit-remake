@@ -18,7 +18,7 @@ static void* DeegenSnippet_GetJmpDest(uint32_t* jmpEndAddr)
     // B.cc and BC.cc instructions
     //
     } else if (ident == 0x54) {
-        diff = (static_cast<int64_t>(instr)<<45)>>43;
+        diff = (static_cast<int64_t>(instr>>5)<<45)>>43;
     } else {
         assert(false && "unexpected instruction for destination retrieval!");
     }

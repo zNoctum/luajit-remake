@@ -2763,48 +2763,31 @@ AstInlineCache::BaselineJitLLVMLoweringResult WARN_UNUSED AstInlineCache::DoLowe
 
         FunctionType* iaFty = nullptr;
         InlineAsm* ia = nullptr;
-        if (llvm_value_has_type<uint32_t>(normalizedIcKey))
+        std::string asmStr = "movz $0, #:abs_g0_nc:$2;movk $0, #:abs_g1_nc:$2;";
+
+        if (llvm_value_has_type<uint64_t>(normalizedIcKey))
         {
-            std::string asmStr = "movz x2, #:abs_g3:$1;movk x2, #:abs_g2_nc:$1; movk x2, #:abs_g1_nc:$1; movk x2, #:abs_g0_nc:$1;cmp x2, $0;";
-            for (size_t i = 0; i < effectImplBBs.size(); i++)
-            {
-                asmStr += "bne ${" + std::to_string(i + 2) + ":l};";
-            }
-
-            std::string constraintStr = "r,i,";
-            for (size_t i = 0; i < effectImplBBs.size(); i++)
-            {
-                constraintStr += "!i,";
-            }
-            constraintStr += "~{cc},~{dirflag},~{fpsr},~{flags},~{x2}";
-
-            asmStr = asmIdentStrPrefix + asmStr;
-            asmStr = MagicAsm::WrapLLVMAsmPayload(asmStr, MagicAsmKind::GenericIcEntry);
-
-            iaFty = FunctionType::get(llvm_type_of<void>(ctx), { llvm_type_of<uint32_t>(ctx), llvm_type_of<void*>(ctx) }, false);
-            ia = InlineAsm::get(iaFty, asmStr, constraintStr, true /*hasSideEffects*/);
+            asmStr += "movk $0, #:abs_g1_nc:$2; movk $0, #:abs_g0_nc:$2;";
         }
-        else
+
+        asmStr += "cmp $0, $1;";
+        for (size_t i = 0; i < effectImplBBs.size(); i++)
         {
-            std::string asmStr = "movz $0, #:abs_g3:$2;movk $0, #:abs_g2_nc:$2; movk $0, #:abs_g1_nc:$2; movk $2, #:abs_g0_nc:$0;cmp $0, $2;";
-            for (size_t i = 0; i < effectImplBBs.size(); i++)
-            {
-                asmStr += "bne ${" + std::to_string(i + 3) + ":l};";
-            }
-
-            std::string constraintStr = "=&r,r,i,";
-            for (size_t i = 0; i < effectImplBBs.size(); i++)
-            {
-                constraintStr += "!i,";
-            }
-            constraintStr += "~{cc},~{dirflag},~{fpsr},~{flags}";
-
-            asmStr = asmIdentStrPrefix + asmStr;
-            asmStr = MagicAsm::WrapLLVMAsmPayload(asmStr, MagicAsmKind::GenericIcEntry);
-
-            iaFty = FunctionType::get(llvm_type_of<uint64_t>(ctx), { llvm_type_of<uint64_t>(ctx), llvm_type_of<void*>(ctx) }, false);
-            ia = InlineAsm::get(iaFty, asmStr, constraintStr, true /*hasSideEffects*/);
+            asmStr += "bne ${" + std::to_string(i + 3) + ":l};";
         }
+
+        std::string constraintStr = "=&r,r,i,";
+        for (size_t i = 0; i < effectImplBBs.size(); i++)
+        {
+            constraintStr += "!i,";
+        }
+        constraintStr += "~{cc},~{dirflag},~{fpsr},~{flags}";
+
+        asmStr = asmIdentStrPrefix + asmStr;
+        asmStr = MagicAsm::WrapLLVMAsmPayload(asmStr, MagicAsmKind::GenericIcEntry);
+
+        iaFty = FunctionType::get(llvm_type_of<uint64_t>(ctx), { llvm_type_of<uint64_t>(ctx), llvm_type_of<void*>(ctx) }, false);
+        ia = InlineAsm::get(iaFty, asmStr, constraintStr, true /*hasSideEffects*/);
         ReleaseAssert(iaFty != nullptr && ia != nullptr);
 
         GlobalVariable* cpSym = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(module, CP_PLACEHOLDER_GENERIC_IC_KEY, /*lower*/ -1, /*upper*/ -1);
@@ -3128,7 +3111,7 @@ std::vector<AstInlineCache::BaselineJitAsmTransformResult> WARN_UNUSED AstInline
             checkIcHitLogic.push_back(payload->m_lines[icEffectBeginLine]);
             icEffectBeginLine++;
         }
-        ReleaseAssert(checkIcHitLogic.size() == 4 || checkIcHitLogic.size() == 5);
+        ReleaseAssert(checkIcHitLogic.size() == 3 || checkIcHitLogic.size() == 5);
 
         std::vector<std::string> effectEntryLabels;
         for (size_t i = icEffectBeginLine; i < payload->m_lines.size(); i++)
