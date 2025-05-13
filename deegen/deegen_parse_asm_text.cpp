@@ -174,26 +174,26 @@ X64AsmLine WARN_UNUSED X64AsmLine::Parse(std::string line)
         // special comments that might break the preprocessor if used incorrectly, but harmless if simply removed
         // See: https://stackoverflow.com/questions/53959565/what-does-app-in-the-assembly-file-generated-by-compiler-mean
         //
-        if (res.m_trailingComments.starts_with("#APP"))
+        if (res.m_trailingComments.starts_with("//APP"))
         {
-            if (res.m_trailingComments == "#APP")
+            if (res.m_trailingComments == "//APP")
             {
                 res.m_trailingComments = "";
             }
             else
             {
-                res.m_trailingComments = "# <removed_sharp_app_comment>" + res.m_trailingComments.substr(strlen("#APP"));
+                res.m_trailingComments = "// <removed_sharp_app_comment>" + res.m_trailingComments.substr(strlen("//APP"));
             }
         }
-        else if (res.m_trailingComments.starts_with("#NO_APP"))
+        else if (res.m_trailingComments.starts_with("//NO_APP"))
         {
-            if (res.m_trailingComments == "#NO_APP")
+            if (res.m_trailingComments == "//NO_APP")
             {
                 res.m_trailingComments = "";
             }
             else
             {
-                res.m_trailingComments = "# <removed_sharp_no_app_comment>" + res.m_trailingComments.substr(strlen("#NO_APP"));
+                res.m_trailingComments = "// <removed_sharp_no_app_comment>" + res.m_trailingComments.substr(strlen("//NO_APP"));
             }
         }
     }

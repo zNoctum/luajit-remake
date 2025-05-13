@@ -1524,40 +1524,6 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
             fprintf(fp, "uint64_t target = deegen_patch_symval + %lluULL - (reinterpret_cast<uint64_t>(deegen_dstAddr) + %lluULL);\n",
                     static_cast<unsigned long long>(rr.m_addend),
                     static_cast<unsigned long long>(rr.m_offset));
-            if (isForIc)
-            {
-                // Materializes a veneer of the following shape
-                // adrp x16,            target
-                // add  x16, x16, :lo12:target
-                // br   x16
-                // 
-                fprintf(fp, "if (static_cast<uint64_t>(static_cast<int64_t>((target&0x1ffffcULL)<<43)>>43) != target)\n"
-                        "{\n"
-                        "    uint64_t offset = %lluUL;\n"
-                        "    uint64_t addend = %lluUL;\n"
-                        "    uint64_t codeLen = %lluUL;\n"
-                        "    uint32_t tmp;\n"
-                        // "    tmp = static_cast<uint32_t>(PAGE(deegen_patch_symval + addend) - PAGE(reinterpret_cast<uint64_t>(deegen_dstAddr) + offset));\n"
-                        // "    tmp = ((tmp&~MASK(30))>>1) + ((tmp&MASK(30))>>7) + 0x907cab10;\n"
-                        // "    deegen_cp_store32(deegen_dstAddr + codeLen + deegen_veneerOffset + 0, tmp);\n"        // adrp x16,            target
-                        // "    tmp = static_cast<uint32_t>(((deegen_patch_symval + addend)&MASK(12))<<10) + 0x91000210;\n"
-                        // "    deegen_cp_store32(deegen_dstAddr + codeLen + deegen_veneerOffset + 4, tmp);\n"        // add  x16, x16, :lo12:target
-                        "    tmp = 0xd2e00010 + static_cast<uint32_t>((((deegen_patch_symval + addend) >> 48) & 0xffff) << 5);\n"
-                        "    deegen_cp_store32(deegen_dstAddr + codeLen + deegen_veneerOffset + 0, tmp);\n"
-                        "    tmp = 0xf2c00010 + static_cast<uint32_t>((((deegen_patch_symval + addend) >> 32) & 0xffff) << 5);\n"
-                        "    deegen_cp_store32(deegen_dstAddr + codeLen + deegen_veneerOffset + 4, tmp);\n"
-                        "    tmp = 0xf2a00010 + static_cast<uint32_t>((((deegen_patch_symval + addend) >> 16) & 0xffff) << 5);\n"
-                        "    deegen_cp_store32(deegen_dstAddr + codeLen + deegen_veneerOffset + 8, tmp);\n"
-                        "    tmp = 0xf2800010 + static_cast<uint32_t>((((deegen_patch_symval + addend) >> 0 ) & 0xffff) << 5);\n"
-                        "    deegen_cp_store32(deegen_dstAddr + codeLen + deegen_veneerOffset + 12, tmp);\n"
-                        "    deegen_cp_store32(deegen_dstAddr + codeLen + deegen_veneerOffset + 16, 0xd61f0200);\n" // br   x16
-                        "    target = deegen_veneerOffset + codeLen - offset;\n"
-                        "    deegen_veneerOffset += 20;\n"
-                        "}\n",
-                        static_cast<unsigned long long>(rr.m_offset),
-                        static_cast<unsigned long long>(rr.m_addend),
-                        static_cast<unsigned long long>(codeLen));
-            }
             fprintf(fp, "uint32_t tmp = static_cast<uint32_t>(%lluU) | static_cast<uint32_t>(((target>>2)&MASK(19))<<5);\n",
                     static_cast<unsigned long long>(oldVal));
             // fprintf(fp, "std::printf(\"%%#016lx = %%#016lx\\n\", static_cast<uintptr_t>(static_cast<intptr_t>((target&0x1ffffcULL)<<43)>>43), target);\n");
@@ -1582,40 +1548,6 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
             fprintf(fp, "uint64_t target = deegen_patch_symval + %lluULL - (reinterpret_cast<uint64_t>(deegen_dstAddr) + %lluULL);\n",
                     static_cast<unsigned long long>(rr.m_addend),
                     static_cast<unsigned long long>(rr.m_offset));
-            if (isForIc)
-            {
-                // Materializes a veneer of the following shape
-                // adrp x16,            target
-                // add  x16, x16, :lo12:target
-                // br   x16
-                // 
-                fprintf(fp, "if (static_cast<uint64_t>(static_cast<int64_t>((target&0xfffcULL)<<48)>>48) != target)\n"
-                        "{\n"
-                        "    uint64_t offset = %lluUL;\n"
-                        "    uint64_t addend = %lluUL;\n"
-                        "    uint64_t codeLen = %lluUL;\n"
-                        "    uint32_t tmp;\n"
-                        // "    tmp = static_cast<uint32_t>(PAGE(deegen_patch_symval + addend) - PAGE(reinterpret_cast<uint64_t>(deegen_dstAddr) + offset));\n"
-                        // "    tmp = ((tmp&~MASK(30))>>1) + ((tmp&MASK(30))>>7) + 0x907cab10;\n"
-                        // "    deegen_cp_store32(deegen_dstAddr + codeLen + deegen_veneerOffset + 0, tmp);\n"        // adrp x16,            target
-                        // "    tmp = static_cast<uint32_t>(((deegen_patch_symval + addend)&MASK(12))<<10) + 0x91000210;\n"
-                        // "    deegen_cp_store32(deegen_dstAddr + codeLen + deegen_veneerOffset + 4, tmp);\n"        // add  x16, x16, :lo12:target
-                        "    tmp = 0xd2e00010 + static_cast<uint32_t>((((deegen_patch_symval + addend) >> 48) & 0xffff) << 5);\n"
-                        "    deegen_cp_store32(deegen_dstAddr + codeLen + deegen_veneerOffset + 0, tmp);\n"
-                        "    tmp = 0xf2c00010 + static_cast<uint32_t>((((deegen_patch_symval + addend) >> 32) & 0xffff) << 5);\n"
-                        "    deegen_cp_store32(deegen_dstAddr + codeLen + deegen_veneerOffset + 4, tmp);\n"
-                        "    tmp = 0xf2a00010 + static_cast<uint32_t>((((deegen_patch_symval + addend) >> 16) & 0xffff) << 5);\n"
-                        "    deegen_cp_store32(deegen_dstAddr + codeLen + deegen_veneerOffset + 8, tmp);\n"
-                        "    tmp = 0xf2800010 + static_cast<uint32_t>((((deegen_patch_symval + addend) >> 0 ) & 0xffff) << 5);\n"
-                        "    deegen_cp_store32(deegen_dstAddr + codeLen + deegen_veneerOffset + 12, tmp);\n"
-                        "    deegen_cp_store32(deegen_dstAddr + codeLen + deegen_veneerOffset + 16, 0xd61f0200);\n" // br   x16
-                        "    target = deegen_veneerOffset + codeLen - offset;\n"
-                        "    deegen_veneerOffset += 20;\n"
-                        "}\n",
-                        static_cast<unsigned long long>(rr.m_offset),
-                        static_cast<unsigned long long>(rr.m_addend),
-                        static_cast<unsigned long long>(codeLen));
-            }
             fprintf(fp, "uint32_t tmp = static_cast<uint32_t>(%lluU) | static_cast<uint32_t>(((target>>2)&MASK(14))<<5);\n",
                     static_cast<unsigned long long>(oldVal));
             // fprintf(fp, "std::printf(\"%%#016lx = %%#016lx\\n\", static_cast<uintptr_t>(static_cast<intptr_t>((target&0xfffcULL)<<48)>>48), target);\n");

@@ -496,9 +496,9 @@ void DeegenStencilLoweringPass::RunAsmRewritePhase(const std::string& asmFile)
                 veneer->m_terminalJmpTargetLabel = label;
                 veneer->m_lines.push_back(X64AsmLine::Parse("\tb\t" + label));
 
-                label = newVeneerLabel;
-
                 slowPathBlockLabels.insert_or_assign(label, std::optional<std::string>{newVeneerLabel});
+
+                label = newVeneerLabel;
 
                 fastPathVeneers.push_back(veneer.get());
                 file->m_blockHolders.push_back(std::move(veneer));
@@ -558,9 +558,9 @@ void DeegenStencilLoweringPass::RunAsmRewritePhase(const std::string& asmFile)
                 veneer->m_terminalJmpTargetLabel = label;
                 veneer->m_lines.push_back(X64AsmLine::Parse("\tb\t" + label));
 
-                label = newVeneerLabel;
-
                 fastPathBlockLabels.insert_or_assign(label, std::optional<std::string>{newVeneerLabel});
+
+                label = newVeneerLabel;
 
                 slowPathVeneers.push_back(veneer.get());
                 file->m_blockHolders.push_back(std::move(veneer));

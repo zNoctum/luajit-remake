@@ -552,8 +552,8 @@ static void InsertBaselineJitCallIcMagicAsmForClosureCall(llvm::Module* module,
     //
     // args: [i32 cb32, ptr cached_cb32] returns: void
     //
-    std::string asmText = "movz x16, #:abs_g1:$1; movk x16, #:abs_g0_nc:$1;cmp x16, $0;b.ne ${2:l};";
-    std::string constraintText = "r,i,!i,~{cc},~{dirflag},~{fpsr},~{flags},~{x16}";
+    std::string asmText = "movz $0, #:abs_g1:$2; movk $0, #:abs_g0_nc:$2;cmp $0, $1;b.ne ${3:l};";
+    std::string constraintText = "=&r,r,i,!i,~{cc},~{dirflag},~{fpsr},~{flags}";
 
     ReleaseAssert(unique_ord <= 1000000000);
     asmText = "mov x0, #" + std::to_string(unique_ord) + ";" + asmText;
@@ -565,7 +565,7 @@ static void InsertBaselineJitCallIcMagicAsmForClosureCall(llvm::Module* module,
     GlobalVariable* cpSym = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(module, CP_PLACEHOLDER_CALL_IC_CALLEE_CB32, /*lower*/ 0, /*upper*/ UINT32_MAX + 1);
     ReleaseAssert(llvm_value_has_type<void*>(cpSym));
 
-    FunctionType* fty = FunctionType::get(llvm_type_of<void>(ctx), { llvm_type_of<uint32_t>(ctx), llvm_type_of<void*>(ctx) }, false);
+    FunctionType* fty = FunctionType::get(llvm_type_of<uint64_t>(ctx), { llvm_type_of<uint32_t>(ctx), llvm_type_of<void*>(ctx) }, false);
     InlineAsm* ia = InlineAsm::get(fty,
                                    asmText,
                                    constraintText,

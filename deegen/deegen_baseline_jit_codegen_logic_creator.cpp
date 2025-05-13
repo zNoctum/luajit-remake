@@ -390,14 +390,14 @@ DeegenBytecodeBaselineJitInfo WARN_UNUSED DeegenBytecodeBaselineJitInfo::Create(
         //
         res.m_allCallIcTraitDescs.push_back({
             .m_ordInTraitTable = bcTraitAccessor.GetJitCallIcTraitOrd(bytecodeIdName, callIcCgRes.m_uniqueOrd, true /*isDirectCall*/),
-            .m_allocationLength = callIcCgRes.m_dcIcSize + 20*32,
+            .m_allocationLength = callIcCgRes.m_dcIcSize,
             .m_isDirectCall = true,
             .m_codePtrPatchRecords = callIcCgRes.m_dcIcCodePtrPatchRecords
         });
 
         res.m_allCallIcTraitDescs.push_back({
             .m_ordInTraitTable = bcTraitAccessor.GetJitCallIcTraitOrd(bytecodeIdName, callIcCgRes.m_uniqueOrd, false /*isDirectCall*/),
-            .m_allocationLength = callIcCgRes.m_ccIcSize + 20*32,
+            .m_allocationLength = callIcCgRes.m_ccIcSize,
             .m_isDirectCall = false,
             .m_codePtrPatchRecords = callIcCgRes.m_ccIcCodePtrPatchRecords
         });

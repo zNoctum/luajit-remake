@@ -1,4 +1,5 @@
 #include "deegen_stencil_inline_cache_extraction_pass.h"
+#include "deegen_parse_asm_text.h"
 #include "deegen_recover_asm_cfg.h"
 
 namespace dast {
@@ -176,6 +177,78 @@ std::vector<DeegenStencilExtractedICAsm> WARN_UNUSED RunStencilInlineCacheLogicE
         {
             clonedList.push_back(block->Clone(file));
         }
+
+        std::set<std::string> icBlockLabelNames;
+        std::map<std::string, std::string> icVeneers;
+        std::vector<X64AsmBlock*> veneers;
+        for (auto block : clonedList)
+        {
+            icBlockLabelNames.insert(block->m_normalizedLabelName);
+        }
+
+        for (auto block : clonedList)
+        {
+            for (size_t i = 0; i < block->m_lines.size(); i++)
+            {
+                size_t wordIndex = 0;
+
+                if (block->m_lines[i].NumWords() > 3 && block->m_lines[i].GetWord(0).starts_with("tb"))
+                {
+                    wordIndex = 3;
+                }
+                else if (block->m_lines[i].NumWords() > 1 && block->m_lines[i].GetWord(0).starts_with("b."))
+                {
+                    wordIndex = 1;
+                }
+                else if (block->m_lines[i].NumWords() > 2 && block->m_lines[i].GetWord(0).starts_with("cb"))
+                {
+                    wordIndex = 2;
+                }
+                else
+                {
+                    continue;
+                }
+
+                std::string label = block->m_lines[i].GetWord(wordIndex);
+
+                if (icBlockLabelNames.count(label))
+                    continue;
+
+                if (auto search = icVeneers.find(label); search != icVeneers.end())
+                {
+                    label = search->second;
+                }
+                else
+                {
+                    std::string newVeneerLabel = file->m_labelNormalizer.GetUniqueLabel();
+                    std::unique_ptr<X64AsmBlock> veneer = std::make_unique<X64AsmBlock>();
+                    veneer->m_prefixText = newVeneerLabel + ":\n";
+                    veneer->m_normalizedLabelName = newVeneerLabel;
+                    veneer->m_endsWithJmpToLocalLabel = false;
+                    veneer->m_terminalJmpTargetLabel = label;
+                    veneer->m_lines.push_back(X64AsmLine::Parse("\tmovz\tx16,\t#:abs_g0_nc:" + label));
+                    veneer->m_lines.push_back(X64AsmLine::Parse("\tmovk\tx16,\t#:abs_g1_nc:" + label));
+                    veneer->m_lines.push_back(X64AsmLine::Parse("\tmovk\tx16,\t#:abs_g2_nc:" + label));
+                    veneer->m_lines.push_back(X64AsmLine::Parse("\tmovk\tx16,\t#:abs_g3:" + label));
+                    veneer->m_lines.push_back(X64AsmLine::Parse("\tbr\tx16"));
+
+                    icVeneers.insert_or_assign(label, newVeneerLabel);
+
+                    label = newVeneerLabel;
+
+                    veneers.push_back(veneer.get());
+                    file->m_blockHolders.push_back(std::move(veneer));
+                }
+
+                block->m_lines[i].GetWord(wordIndex) = label;
+            }
+        }
+
+        for (X64AsmBlock* block : veneers)
+        {
+            clonedList.push_back(block);
+        }
+
         item.m_blocks = clonedList;
     }
 

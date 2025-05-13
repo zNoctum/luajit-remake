@@ -123,8 +123,8 @@ deegen_internal_use_only_exit_vm_epilogue:
 	mov     x0, x24
 	mov     x1, x25
 	
-	    # Clean up the stack and restore the callee-saved registers of C calling convention
-	    #
+	# Clean up the stack and restore the callee-saved registers of C calling convention
+	#
 	ldp x29, x30, [sp, #80]
 	ldp x27, x28, [sp, #64]
 	ldp x25, x26, [sp, #48]
