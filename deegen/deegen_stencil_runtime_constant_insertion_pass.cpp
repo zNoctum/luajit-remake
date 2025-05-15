@@ -155,7 +155,7 @@ std::string WARN_UNUSED CPExprUnaryOp::PrintExprImpl(CpPlaceholderExprPrinter* p
 
 // the interval [lower, upper) is the interval given to absolute_symbol
 //
-llvm::GlobalVariable* WARN_UNUSED DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(llvm::Module* module, uint64_t ord, int64_t lower, int64_t upper)
+llvm::GlobalVariable* WARN_UNUSED DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(llvm::Module* module, uint64_t ord, int64_t, int64_t)
 {
     using namespace llvm;
     LLVMContext& ctx = module->getContext();
@@ -172,8 +172,8 @@ llvm::GlobalVariable* WARN_UNUSED DeegenInsertOrGetCopyAndPatchPlaceholderSymbol
         gv->setAlignment(MaybeAlign(1));
         gv->setDSOLocal(true);
         auto *MD = MDNode::get(ctx, {
-            ValueAsMetadata::get(ConstantInt::getSigned(llvm_type_of<uint64_t>(ctx), lower)),
-            ValueAsMetadata::get(ConstantInt::getSigned(llvm_type_of<uint64_t>(ctx), upper))
+            ValueAsMetadata::get(ConstantInt::getSigned(llvm_type_of<uint64_t>(ctx), -1)),
+            ValueAsMetadata::get(ConstantInt::getSigned(llvm_type_of<uint64_t>(ctx), -1))
         });
         gv->setMetadata(LLVMContext::MD_absolute_symbol, MD);
     }

@@ -91,8 +91,6 @@ std::unique_ptr<llvm::Module> WARN_UNUSED DeegenFunctionEntryLogicCreator::Gener
         Value* bcb = ExtractValueInst::Create(bcbAndCodePointer, { 0 /*idx*/ }, "", entryBB);
         Value* codePointer = ExtractValueInst::Create(bcbAndCodePointer, { 1 /*idx*/ }, "", entryBB);
 
-        // This is again because LLVM decides to have differing behavior depending on target. still WHY?????
-        //
         if (llvm_value_has_type<uint64_t>(bcb))
             bcb = new IntToPtrInst(bcb, llvm_type_of<void*>(ctx), "", entryBB);
         if (llvm_value_has_type<uint64_t>(codePointer))
