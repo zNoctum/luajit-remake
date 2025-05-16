@@ -1,5 +1,5 @@
 diff --git a/llvm/include/llvm/CodeGen/TargetInstrInfo.h b/llvm/include/llvm/CodeGen/TargetInstrInfo.h
-index 72f69f4c6..3d109a6d9 100644
+index 72f69f4c6b77..3d109a6d92b5 100644
 --- a/llvm/include/llvm/CodeGen/TargetInstrInfo.h
 +++ b/llvm/include/llvm/CodeGen/TargetInstrInfo.h
 @@ -1208,6 +1208,8 @@ public:
@@ -12,7 +12,7 @@ index 72f69f4c6..3d109a6d9 100644
    /// Target-dependent implementation for foldMemoryOperand.
    /// Target-independent code in foldMemoryOperand will
 diff --git a/llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp b/llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp
-index 32a10ad41..7701cac65 100644
+index 32a10ad41d1f..7701cac655dc 100644
 --- a/llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp
 +++ b/llvm/lib/CodeGen/AsmPrinter/AsmPrinter.cpp
 @@ -125,6 +125,12 @@
@@ -65,7 +65,7 @@ index 32a10ad41..7701cac65 100644
        case TargetOpcode::CFI_INSTRUCTION:
          emitCFIInstruction(MI);
 diff --git a/llvm/lib/ExecutionEngine/RuntimeDyld/RuntimeDyldELF.cpp b/llvm/lib/ExecutionEngine/RuntimeDyld/RuntimeDyldELF.cpp
-index c702584b7..16163a422 100644
+index c702584b7a33..16163a422734 100644
 --- a/llvm/lib/ExecutionEngine/RuntimeDyld/RuntimeDyldELF.cpp
 +++ b/llvm/lib/ExecutionEngine/RuntimeDyld/RuntimeDyldELF.cpp
 @@ -496,12 +496,15 @@ void RuntimeDyldELF::resolveAArch64Relocation(const SectionEntry &Section,
@@ -85,7 +85,7 @@ index c702584b7..16163a422 100644
      or32le(TargetPtr, ((Value + Addend) & 0xFFFF) << 5);
      break;
 diff --git a/llvm/lib/IR/ConstantFold.cpp b/llvm/lib/IR/ConstantFold.cpp
-index 98adff107..76d408a2a 100644
+index 98adff107cec..76d408a2a01a 100644
 --- a/llvm/lib/IR/ConstantFold.cpp
 +++ b/llvm/lib/IR/ConstantFold.cpp
 @@ -30,6 +30,7 @@
@@ -138,7 +138,7 @@ index 98adff107..76d408a2a 100644
      }
    } else if (const BlockAddress *BA = dyn_cast<BlockAddress>(V1)) {
 diff --git a/llvm/lib/Target/AArch64/AArch64CallingConvention.td b/llvm/lib/Target/AArch64/AArch64CallingConvention.td
-index c0da242a2..a1fd5c85e 100644
+index c0da242a26de..a1fd5c85e472 100644
 --- a/llvm/lib/Target/AArch64/AArch64CallingConvention.td
 +++ b/llvm/lib/Target/AArch64/AArch64CallingConvention.td
 @@ -334,9 +334,9 @@ def CC_AArch64_GHC : CallingConv<[
@@ -164,7 +164,7 @@ index c0da242a2..a1fd5c85e 100644
  def CSR_AArch64_RT_MostRegs :  CalleeSavedRegs<(add CSR_AArch64_AAPCS,
                                                  (sequence "X%u", 9, 15))>;
 diff --git a/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp b/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
-index 78babdf9f..dcfc6f280 100644
+index 78babdf9f1f0..dcfc6f280247 100644
 --- a/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
 +++ b/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
 @@ -257,6 +257,11 @@ cl::opt<bool> EnableHomogeneousPrologEpilog(
@@ -216,7 +216,7 @@ index 78babdf9f..dcfc6f280 100644
  
    TargetFrameLowering::determineCalleeSaves(MF, SavedRegs, RS);
 diff --git a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp
-index 06e21f90e..a9c9a10d8 100644
+index 06e21f90ebf1..bf6232fdd744 100644
 --- a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp
 +++ b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp
 @@ -6226,6 +6226,7 @@ static bool mayTailCallThisCC(CallingConv::ID CC) {
@@ -227,16 +227,25 @@ index 06e21f90e..a9c9a10d8 100644
      return true;
    default:
      return false;
-@@ -6847,6 +6848,8 @@ AArch64TargetLowering::LowerCall(CallLoweringInfo &CLI,
+@@ -6841,14 +6842,15 @@ AArch64TargetLowering::LowerCall(CallLoweringInfo &CLI,
+   // direct call is) turn it into a TargetGlobalAddress/TargetExternalSymbol
+   // node so that legalize doesn't hack it.
+   if (auto *G = dyn_cast<GlobalAddressSDNode>(Callee)) {
+-    auto GV = G->getGlobal();
++    const GlobalValue * GV = G->getGlobal();
+     unsigned OpFlags =
+         Subtarget->classifyGlobalFunctionReference(GV, getTargetMachine());
      if (OpFlags & AArch64II::MO_GOT) {
        Callee = DAG.getTargetGlobalAddress(GV, DL, PtrVT, 0, OpFlags);
        Callee = DAG.getNode(AArch64ISD::LOADgot, DL, PtrVT, Callee);
-+    } else if (getTargetMachine().getCodeModel() == CodeModel::Large) {
++    } else if (getTargetMachine().getCodeModel() == CodeModel::Large && !dyn_cast<GlobalObject>(GV)->getMetadata("deegen_short_call")) {
 +      Callee = getAddrLarge(G, DAG, 0);
      } else {
-       const GlobalValue *GV = G->getGlobal();
+-      const GlobalValue *GV = G->getGlobal();
        Callee = DAG.getTargetGlobalAddress(GV, DL, PtrVT, 0, 0);
-@@ -6857,6 +6860,17 @@ AArch64TargetLowering::LowerCall(CallLoweringInfo &CLI,
+     }
+   } else if (auto *S = dyn_cast<ExternalSymbolSDNode>(Callee)) {
+@@ -6857,6 +6859,22 @@ AArch64TargetLowering::LowerCall(CallLoweringInfo &CLI,
        const char *Sym = S->getSymbol();
        Callee = DAG.getTargetExternalSymbol(Sym, PtrVT, AArch64II::MO_GOT);
        Callee = DAG.getNode(AArch64ISD::LOADgot, DL, PtrVT, Callee);
@@ -244,17 +253,22 @@ index 06e21f90e..a9c9a10d8 100644
 +      const char *Sym = S->getSymbol();
 +      const unsigned char MO_NC = AArch64II::MO_NC;
 +
-+      // This should be safe
 +      Callee = SDValue(DAG.getMachineNode(AArch64::MOVZXi, DL, PtrVT,
-+                                  DAG.getTargetExternalSymbol(Sym, PtrVT, AArch64II::MO_G1),
-+                                  DAG.getTargetConstant(16, DL, MVT::i32)), 0);
++                                          DAG.getTargetExternalSymbol(Sym, PtrVT, AArch64II::MO_G3),
++                                          DAG.getTargetConstant(48, DL, MVT::i32)), 0);
++      Callee = SDValue(DAG.getMachineNode(AArch64::MOVKXi, DL, PtrVT, Callee,
++                                          DAG.getTargetExternalSymbol(Sym, PtrVT, AArch64II::MO_G2 | MO_NC),
++                                          DAG.getTargetConstant(32, DL, MVT::i32)), 0);
++      Callee = SDValue(DAG.getMachineNode(AArch64::MOVKXi, DL, PtrVT, Callee,
++                                          DAG.getTargetExternalSymbol(Sym, PtrVT, AArch64II::MO_G1 | MO_NC),
++                                          DAG.getTargetConstant(16, DL, MVT::i32)), 0);
 +      Callee = SDValue(DAG.getMachineNode(AArch64::MOVKXi, DL, PtrVT, Callee,
 +                                          DAG.getTargetExternalSymbol(Sym, PtrVT, AArch64II::MO_G0 | MO_NC),
 +                                          DAG.getTargetConstant(0, DL, MVT::i32)), 0);
      } else {
        const char *Sym = S->getSymbol();
        Callee = DAG.getTargetExternalSymbol(Sym, PtrVT, 0);
-@@ -7142,6 +7156,47 @@ SDValue AArch64TargetLowering::getAddrLarge(NodeTy *N, SelectionDAG &DAG,
+@@ -7142,6 +7160,47 @@ SDValue AArch64TargetLowering::getAddrLarge(NodeTy *N, SelectionDAG &DAG,
        getTargetNode(N, Ty, DAG, AArch64II::MO_G0 | MO_NC | Flags));
  }
  
@@ -302,7 +316,7 @@ index 06e21f90e..a9c9a10d8 100644
  // (addlow (adrp %hi(sym)) %lo(sym))
  template <class NodeTy>
  SDValue AArch64TargetLowering::getAddr(NodeTy *N, SelectionDAG &DAG,
-@@ -7184,7 +7239,9 @@ SDValue AArch64TargetLowering::LowerGlobalAddress(SDValue Op,
+@@ -7184,7 +7243,9 @@ SDValue AArch64TargetLowering::LowerGlobalAddress(SDValue Op,
    }
  
    SDValue Result;
@@ -314,7 +328,7 @@ index 06e21f90e..a9c9a10d8 100644
    } else if (getTargetMachine().getCodeModel() == CodeModel::Tiny) {
      Result = getAddrTiny(GN, DAG, OpFlags);
 diff --git a/llvm/lib/Target/AArch64/AArch64ISelLowering.h b/llvm/lib/Target/AArch64/AArch64ISelLowering.h
-index ff3bfe897..3ec69a193 100644
+index ff3bfe897869..3ec69a193670 100644
 --- a/llvm/lib/Target/AArch64/AArch64ISelLowering.h
 +++ b/llvm/lib/Target/AArch64/AArch64ISelLowering.h
 @@ -949,6 +949,8 @@ private:
@@ -327,7 +341,7 @@ index ff3bfe897..3ec69a193 100644
    template <class NodeTy>
    SDValue getAddrTiny(NodeTy *N, SelectionDAG &DAG, unsigned Flags = 0) const;
 diff --git a/llvm/lib/Target/AArch64/AArch64InstrInfo.cpp b/llvm/lib/Target/AArch64/AArch64InstrInfo.cpp
-index 835a7b6cc..8c18380b4 100644
+index 835a7b6cc81d..8c18380b4ae0 100644
 --- a/llvm/lib/Target/AArch64/AArch64InstrInfo.cpp
 +++ b/llvm/lib/Target/AArch64/AArch64InstrInfo.cpp
 @@ -2556,6 +2556,48 @@ bool AArch64InstrInfo::getMemOperandsWithOffsetWidth(
@@ -380,7 +394,7 @@ index 835a7b6cc..8c18380b4 100644
  AArch64InstrInfo::getAddrModeFromMemoryOp(const MachineInstr &MemI,
                                            const TargetRegisterInfo *TRI) const {
 diff --git a/llvm/lib/Target/AArch64/AArch64InstrInfo.h b/llvm/lib/Target/AArch64/AArch64InstrInfo.h
-index b7a6ac301..ece4f3a49 100644
+index b7a6ac301cdc..ece4f3a49fa9 100644
 --- a/llvm/lib/Target/AArch64/AArch64InstrInfo.h
 +++ b/llvm/lib/Target/AArch64/AArch64InstrInfo.h
 @@ -134,6 +134,8 @@ public:
@@ -393,7 +407,7 @@ index b7a6ac301..ece4f3a49 100644
    getAddrModeFromMemoryOp(const MachineInstr &MemI,
                            const TargetRegisterInfo *TRI) const override;
 diff --git a/llvm/lib/Target/AArch64/AArch64Subtarget.cpp b/llvm/lib/Target/AArch64/AArch64Subtarget.cpp
-index 150053043..31cfedb33 100644
+index 15005304383d..31cfedb33c05 100644
 --- a/llvm/lib/Target/AArch64/AArch64Subtarget.cpp
 +++ b/llvm/lib/Target/AArch64/AArch64Subtarget.cpp
 @@ -314,6 +314,10 @@ const RegisterBankInfo *AArch64Subtarget::getRegBankInfo() const {
@@ -408,7 +422,7 @@ index 150053043..31cfedb33 100644
    // absolute relocation on all global addresses.
    if (TM.getCodeModel() == CodeModel::Large && isTargetMachO())
 diff --git a/llvm/lib/Target/X86/X86CallingConv.td b/llvm/lib/Target/X86/X86CallingConv.td
-index 4dd8a6cdd..5a2c1fa5d 100644
+index 4dd8a6cdd898..5a2c1fa5d9c4 100644
 --- a/llvm/lib/Target/X86/X86CallingConv.td
 +++ b/llvm/lib/Target/X86/X86CallingConv.td
 @@ -705,9 +705,9 @@ def CC_X86_64_GHC : CallingConv<[
@@ -443,7 +457,7 @@ index 4dd8a6cdd..5a2c1fa5d 100644
  
  def CSR_64_MostRegs : CalleeSavedRegs<(add RBX, RCX, RDX, RSI, RDI, R8, R9, R10,
 diff --git a/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp b/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp
-index f88037e95..63eeebd19 100644
+index f88037e95d33..63eeebd196fd 100644
 --- a/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp
 +++ b/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp
 @@ -1786,6 +1786,14 @@ bool X86DAGToDAGISel::matchWrapper(SDValue N, X86ISelAddressMode &AM) {
@@ -471,7 +485,7 @@ index f88037e95..63eeebd19 100644
  
  bool X86DAGToDAGISel::selectLEA64_32Addr(SDValue N, SDValue &Base,
 diff --git a/llvm/lib/Target/X86/X86InstrInfo.cpp b/llvm/lib/Target/X86/X86InstrInfo.cpp
-index 74ef831e1..613faece6 100644
+index 74ef831e1658..613faece6a97 100644
 --- a/llvm/lib/Target/X86/X86InstrInfo.cpp
 +++ b/llvm/lib/Target/X86/X86InstrInfo.cpp
 @@ -3252,6 +3252,68 @@ bool X86InstrInfo::analyzeBranchPredicate(MachineBasicBlock &MBB,
@@ -544,7 +558,7 @@ index 74ef831e1..613faece6 100644
                                      int *BytesRemoved) const {
    assert(!BytesRemoved && "code size not handled");
 diff --git a/llvm/lib/Target/X86/X86InstrInfo.h b/llvm/lib/Target/X86/X86InstrInfo.h
-index 81729e361..abc387bcd 100644
+index 81729e3618d8..abc387bcd242 100644
 --- a/llvm/lib/Target/X86/X86InstrInfo.h
 +++ b/llvm/lib/Target/X86/X86InstrInfo.h
 @@ -327,6 +327,8 @@ public:

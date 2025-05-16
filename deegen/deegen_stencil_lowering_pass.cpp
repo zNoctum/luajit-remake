@@ -439,6 +439,44 @@ void DeegenStencilLoweringPass::RunAsmRewritePhase(const std::string& asmFile)
     ReleaseAssert(file->m_blocks.size() > 0);
     file->m_blocks = X64AsmBlock::ReorderBlocksToMaximizeFallthroughs(file->m_blocks, 0 /*entryOrd*/);
 
+    std::unordered_map<std::string, std::string> callVeneers;
+    for (size_t i = 0; i < file->m_blocks.size(); i++)
+    {
+        X64AsmBlock* block = file->m_blocks[i];
+        if (block->m_lines.size() != 1 || block->m_lines[0].GetWord(0) != "b")
+            continue;
+
+        std::string label = block->m_lines[0].GetWord(1);
+
+        if (!label.starts_with("__deegen_cp_placeholder_"))
+            continue;
+
+        callVeneers.insert({block->m_normalizedLabelName, label});
+    }
+
+    for (X64AsmBlock* block : file->m_blocks)
+    {
+        for (size_t i = 0; i < block->m_lines.size(); i++)
+        {
+            uint32_t wordIndex = 0;
+            if (block->m_lines[i].NumWords() > 1 && block->m_lines[i].GetWord(0).starts_with("b.") && block->m_lines[i].GetWord(0) != "b.nv")
+            {
+                wordIndex = 1;
+            }
+            else if (block->m_lines[i].NumWords() > 2 && block->m_lines[i].GetWord(0).starts_with("cb"))
+            {
+                wordIndex = 2;
+            }
+
+            std::string label = block->m_lines[i].GetWord(wordIndex);
+
+            if (auto search = callVeneers.find(label); search != callVeneers.end())
+            {
+                block->m_lines[i].GetWord(wordIndex) = search->second;
+            }
+        }
+    }
+
     std::map<std::string, std::optional<std::string /*slowPathVeneerLabel*/>> fastPathBlockLabels;
     for (X64AsmBlock* block : file->m_blocks)
     {

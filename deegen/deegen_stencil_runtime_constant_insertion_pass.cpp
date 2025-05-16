@@ -171,7 +171,7 @@ llvm::GlobalVariable* WARN_UNUSED DeegenInsertOrGetCopyAndPatchPlaceholderSymbol
         ReleaseAssert(gv->getName().str() == symName);
         gv->setAlignment(MaybeAlign(1));
         gv->setDSOLocal(true);
-        auto *MD = MDNode::get(ctx, {
+        MDNode *MD = MDNode::get(ctx, {
             ValueAsMetadata::get(ConstantInt::getSigned(llvm_type_of<uint64_t>(ctx), -1)),
             ValueAsMetadata::get(ConstantInt::getSigned(llvm_type_of<uint64_t>(ctx), -1))
         });
@@ -493,7 +493,17 @@ end:
 
             ReleaseAssert(rcList.count(rc));
             uint64_t ord = rcList[rc].ord;
-            GlobalVariable* gv = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(module, ord, rc->m_bitWidth < 64 ? 0 : -1, rc->m_bitWidth < 64 ? (1 << rc->m_bitWidth) : -1);
+
+            GlobalVariable* gv = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(module, ord, rc->m_bitWidth < 64 ? 0 : -1, rc->m_bitWidth < 64 ? static_cast<int64_t>(1ULL << rc->m_bitWidth) : -1);
+            CPRawRuntimeConstant* rrc = dynamic_cast<CPRawRuntimeConstant*>(rc);
+
+            // In the case that rc is the unadjusted address of either the fallthrough next bytecode or the condbr target
+            // we attach the deegen_short_call metadata so it gets force lowered to a b call instead of a GOT call.
+            //
+            if (rrc && (rrc->m_label == 101 || rrc->m_label == 102))
+            {
+                gv->setMetadata("deegen_short_call", MDNode::get(ctx, {}));
+            }
 
             // 'gv' is the adjusted symbol. Now in LLVM IR, we need to undo the adjustment to get the original value back
             //

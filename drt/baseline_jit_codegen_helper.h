@@ -59,6 +59,12 @@ enum class BaselineJitCondBrLatePatchKind : uint32_t
     // *(uint32_t*)ptr |= ((dstAddr>>48)&0xFFFF)<<5;
     //
     G3,
+    // *(uint32_t*)ptr |= ((static_cast<int64_t>(jitAddr - dstAddr)>>2)&0x3FFFFFF;
+    //
+    B26,
+    // *(uint32_t*)ptr |= ((static_cast<int64_t>(jitAddr - dstAddr)>>2)&0x7FFFF;
+    //
+    C19,
 };
 
 struct BaselineJitCondBrLatePatchRecord
@@ -85,19 +91,32 @@ struct BaselineJitCondBrLatePatchRecord
         }
         case BaselineJitCondBrLatePatchKind::G1:
         {
-            uint32_t rel32 = ((static_cast<uint32_t>(jitAddr)>>16)&0xFFFF)<<5;
+            uint32_t rel32 = (static_cast<uint32_t>(jitAddr>>16)&0xFFFF)<<5;
             UnalignedStore<uint32_t>(m_ptr, UnalignedLoad<uint32_t>(m_ptr) + rel32);
             break;
         }
         case BaselineJitCondBrLatePatchKind::G2:
         {
-            uint32_t rel32 = static_cast<uint32_t>(((reinterpret_cast<uint64_t>(m_ptr)>>32)&0xFFFF)<<5);
+            uint32_t rel32 = (static_cast<uint32_t>(jitAddr>>32)&0xFFFF)<<5;
             UnalignedStore<uint32_t>(m_ptr, UnalignedLoad<uint32_t>(m_ptr) + rel32);
             break;
         }
         case BaselineJitCondBrLatePatchKind::G3:
         {
-            uint32_t rel32 = static_cast<uint32_t>(((reinterpret_cast<uint64_t>(m_ptr)>>48)&0xFFFF)<<5);
+            uint32_t rel32 = (static_cast<uint32_t>(jitAddr>>48)&0xFFFF)<<5;
+            UnalignedStore<uint32_t>(m_ptr, UnalignedLoad<uint32_t>(m_ptr) + rel32);
+            break;
+        }
+        case BaselineJitCondBrLatePatchKind::B26:
+        {
+            uint32_t rel32 = static_cast<uint32_t>((static_cast<int64_t>(jitAddr - reinterpret_cast<uint64_t>(m_ptr))>>2)&0x3FFFFFF);
+            UnalignedStore<uint32_t>(m_ptr, UnalignedLoad<uint32_t>(m_ptr) + rel32);
+            break;
+        }
+        case BaselineJitCondBrLatePatchKind::C19:
+        {
+            assert(((static_cast<int64_t>(jitAddr - reinterpret_cast<uint64_t>(m_ptr))<<43)>>43) == static_cast<int64_t>(jitAddr - reinterpret_cast<uint64_t>(m_ptr)));
+            uint32_t rel32 = static_cast<uint32_t>((static_cast<int64_t>(jitAddr - reinterpret_cast<uint64_t>(m_ptr))>>2)&0x7FFFF)<<5;
             UnalignedStore<uint32_t>(m_ptr, UnalignedLoad<uint32_t>(m_ptr) + rel32);
             break;
         }
