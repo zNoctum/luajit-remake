@@ -440,6 +440,7 @@ void DeegenStencilLoweringPass::RunAsmRewritePhase(const std::string& asmFile)
     file->m_blocks = X64AsmBlock::ReorderBlocksToMaximizeFallthroughs(file->m_blocks, 0 /*entryOrd*/);
 
     std::unordered_map<std::string, std::string> callVeneers;
+    std::unordered_set<std::string> shouldntDelete;
     for (size_t i = 0; i < file->m_blocks.size(); i++)
     {
         X64AsmBlock* block = file->m_blocks[i];
@@ -448,18 +449,35 @@ void DeegenStencilLoweringPass::RunAsmRewritePhase(const std::string& asmFile)
 
         std::string label = block->m_lines[0].GetWord(1);
 
+        if (0 < i)
+        {
+            X64AsmBlock* pred = file->m_blocks[i-1];
+            if (pred->m_endsWithJmpToLocalLabel && pred->m_terminalJmpTargetLabel == block->m_normalizedLabelName)
+            {
+                shouldntDelete.insert(block->m_normalizedLabelName);
+            }
+        }
+
         if (!label.starts_with("__deegen_cp_placeholder_"))
             continue;
 
         callVeneers.insert({block->m_normalizedLabelName, label});
     }
 
-    for (X64AsmBlock* block : file->m_blocks)
+    for (X64AsmBlock* block : file->m_slowpath)
     {
         for (size_t i = 0; i < block->m_lines.size(); i++)
         {
             uint32_t wordIndex = 0;
-            if (block->m_lines[i].NumWords() > 1 && block->m_lines[i].GetWord(0).starts_with("b.") && block->m_lines[i].GetWord(0) != "b.nv")
+            if (block->m_lines[i].NumWords() > 3 && block->m_lines[i].GetWord(0).starts_with("tb"))
+            {
+                wordIndex = 3;
+            }
+            else if (block->m_lines[i].NumWords() > 1 && block->m_lines[i].GetWord(0) == "b")
+            {
+                wordIndex = 1;
+            }
+            else if (block->m_lines[i].NumWords() > 1 && block->m_lines[i].GetWord(0).starts_with("b.") && block->m_lines[i].GetWord(0) != "b.nv")
             {
                 wordIndex = 1;
             }
@@ -467,14 +485,66 @@ void DeegenStencilLoweringPass::RunAsmRewritePhase(const std::string& asmFile)
             {
                 wordIndex = 2;
             }
+            else
+            {
+                continue;
+            }
+
+            shouldntDelete.insert(block->m_lines[i].GetWord(wordIndex));
+        }
+    }
+
+    for (X64AsmBlock* block : file->m_blocks)
+    {
+        for (size_t i = 0; i < block->m_lines.size(); i++)
+        {
+            uint32_t wordIndex = 0;
+            bool isB = false;
+            if (block->m_lines[i].NumWords() > 3 && block->m_lines[i].GetWord(0).starts_with("tb"))
+            {
+                shouldntDelete.insert(block->m_lines[i].GetWord(3));
+            }
+            else if (block->m_lines[i].NumWords() > 1 && block->m_lines[i].GetWord(0) == "b")
+            {
+                isB = true;
+                wordIndex = 1;
+            }
+            else if (block->m_lines[i].NumWords() > 1 && block->m_lines[i].GetWord(0).starts_with("b.") && block->m_lines[i].GetWord(0) != "b.nv")
+            {
+                wordIndex = 1;
+            }
+            else if (block->m_lines[i].NumWords() > 2 && block->m_lines[i].GetWord(0).starts_with("cb"))
+            {
+                wordIndex = 2;
+            }
+            else
+            {
+                continue;
+            }
 
             std::string label = block->m_lines[i].GetWord(wordIndex);
 
             if (auto search = callVeneers.find(label); search != callVeneers.end())
             {
+                if (isB && block->m_lines.size() - 1 == i)
+                {
+                    block->m_endsWithJmpToLocalLabel = false;
+                }
                 block->m_lines[i].GetWord(wordIndex) = search->second;
             }
         }
+    }
+
+    ReleaseAssert(file->m_blocks.size() > 0);
+
+    for (size_t i = 1; i < file->m_blocks.size(); i++)
+    {
+        X64AsmBlock* block = file->m_blocks[i];
+        if (!callVeneers.count(block->m_normalizedLabelName) || shouldntDelete.count(block->m_normalizedLabelName))
+            continue;
+
+        std::cout << "Deleting: " << block->m_normalizedLabelName << std::endl;
+        file->m_blocks.erase(file->m_blocks.begin() + static_cast<ssize_t>(i));
     }
 
     std::map<std::string, std::optional<std::string /*slowPathVeneerLabel*/>> fastPathBlockLabels;
