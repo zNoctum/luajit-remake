@@ -109,8 +109,11 @@ struct BaselineJitCondBrLatePatchRecord
         }
         case BaselineJitCondBrLatePatchKind::B26:
         {
+            assert(((static_cast<int64_t>(jitAddr - reinterpret_cast<uint64_t>(m_ptr))<<36)>>36) == static_cast<int64_t>(jitAddr - reinterpret_cast<uint64_t>(m_ptr)));
             uint32_t rel32 = static_cast<uint32_t>((static_cast<int64_t>(jitAddr - reinterpret_cast<uint64_t>(m_ptr))>>2)&0x3FFFFFF);
             UnalignedStore<uint32_t>(m_ptr, UnalignedLoad<uint32_t>(m_ptr) + rel32);
+
+            __builtin___clear_cache(reinterpret_cast<char*>(m_ptr), reinterpret_cast<char*>(m_ptr) + 4);
             break;
         }
         case BaselineJitCondBrLatePatchKind::C19:
@@ -118,6 +121,8 @@ struct BaselineJitCondBrLatePatchRecord
             assert(((static_cast<int64_t>(jitAddr - reinterpret_cast<uint64_t>(m_ptr))<<43)>>43) == static_cast<int64_t>(jitAddr - reinterpret_cast<uint64_t>(m_ptr)));
             uint32_t rel32 = static_cast<uint32_t>((static_cast<int64_t>(jitAddr - reinterpret_cast<uint64_t>(m_ptr))>>2)&0x7FFFF)<<5;
             UnalignedStore<uint32_t>(m_ptr, UnalignedLoad<uint32_t>(m_ptr) + rel32);
+
+            __builtin___clear_cache(reinterpret_cast<char*>(m_ptr), reinterpret_cast<char*>(m_ptr) + 4);
             break;
         }
         case BaselineJitCondBrLatePatchKind::SlowPathData:

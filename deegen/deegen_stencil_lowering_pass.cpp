@@ -543,7 +543,6 @@ void DeegenStencilLoweringPass::RunAsmRewritePhase(const std::string& asmFile)
         if (!callVeneers.count(block->m_normalizedLabelName) || shouldntDelete.count(block->m_normalizedLabelName))
             continue;
 
-        std::cout << "Deleting: " << block->m_normalizedLabelName << std::endl;
         file->m_blocks.erase(file->m_blocks.begin() + static_cast<ssize_t>(i));
     }
 
