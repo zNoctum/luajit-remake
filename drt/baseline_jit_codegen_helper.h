@@ -81,30 +81,40 @@ struct BaselineJitCondBrLatePatchRecord
         {
             assert(false);
             UnalignedStore<uint32_t>(m_ptr, UnalignedLoad<uint32_t>(m_ptr) + static_cast<uint32_t>(jitAddr));
+
+            __builtin___clear_cache(reinterpret_cast<char*>(m_ptr), reinterpret_cast<char*>(m_ptr) + 4);
             break;
         }
         case BaselineJitCondBrLatePatchKind::G0:
         {
             uint32_t rel32 = (static_cast<uint32_t>(jitAddr)&0xFFFF)<<5;
             UnalignedStore<uint32_t>(m_ptr, UnalignedLoad<uint32_t>(m_ptr) + rel32);
+
+            __builtin___clear_cache(reinterpret_cast<char*>(m_ptr), reinterpret_cast<char*>(m_ptr) + 4);
             break;
         }
         case BaselineJitCondBrLatePatchKind::G1:
         {
             uint32_t rel32 = (static_cast<uint32_t>(jitAddr>>16)&0xFFFF)<<5;
             UnalignedStore<uint32_t>(m_ptr, UnalignedLoad<uint32_t>(m_ptr) + rel32);
+
+            __builtin___clear_cache(reinterpret_cast<char*>(m_ptr), reinterpret_cast<char*>(m_ptr) + 4);
             break;
         }
         case BaselineJitCondBrLatePatchKind::G2:
         {
             uint32_t rel32 = (static_cast<uint32_t>(jitAddr>>32)&0xFFFF)<<5;
             UnalignedStore<uint32_t>(m_ptr, UnalignedLoad<uint32_t>(m_ptr) + rel32);
+
+            __builtin___clear_cache(reinterpret_cast<char*>(m_ptr), reinterpret_cast<char*>(m_ptr) + 4);
             break;
         }
         case BaselineJitCondBrLatePatchKind::G3:
         {
             uint32_t rel32 = (static_cast<uint32_t>(jitAddr>>48)&0xFFFF)<<5;
             UnalignedStore<uint32_t>(m_ptr, UnalignedLoad<uint32_t>(m_ptr) + rel32);
+
+            __builtin___clear_cache(reinterpret_cast<char*>(m_ptr), reinterpret_cast<char*>(m_ptr) + 4);
             break;
         }
         case BaselineJitCondBrLatePatchKind::B26:

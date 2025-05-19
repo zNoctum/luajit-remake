@@ -20,6 +20,8 @@ static void DeegenSnippet_SetJmpDest(uint32_t* jmpEndAddr, void* newDest)
         //
         assert((((diff&MASK(26))<<38)>>38) == diff);
         instr = static_cast<uint32_t>((instr&~MASK(26))|(diff&MASK(26)));
+    // b.cc and bc.cc instructions
+    //
     } else if (ident == 0x54) {
         assert((((diff&MASK(19))<<45)>>45) == diff);
         instr = static_cast<uint32_t>((instr&(~MASK(24)|MASK(5)))|((diff&MASK(19))<<5));

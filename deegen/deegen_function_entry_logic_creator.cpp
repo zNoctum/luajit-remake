@@ -218,12 +218,7 @@ void DeegenFunctionEntryLogicCreator::Run(llvm::LLVMContext& ctx)
         {
             // Check if we need to tier up
             //
-            Value* tierUpCounter = CreateCallToDeegenCommonSnippet(module.get(), "GetInterpreterTierUpCounterFromCb", { calleeCodeBlock }, entryBB);
-            ReleaseAssert(llvm_value_has_type<int64_t>(tierUpCounter));
-
-            Value* shouldTierUp = new ICmpInst(*entryBB, ICmpInst::ICMP_SLT, tierUpCounter, CreateLLVMConstantInt<int64_t>(ctx, 0));
-            Function* expectIntrin = Intrinsic::getDeclaration(module.get(), Intrinsic::expect, { Type::getInt1Ty(ctx) });
-            shouldTierUp = CallInst::Create(expectIntrin, { shouldTierUp, CreateLLVMConstantInt<bool>(ctx, false) }, "", entryBB);
+            Value* shouldTierUp = CreateCallToDeegenCommonSnippet(module.get(), "ShouldTierUp", { calleeCodeBlock }, entryBB);
 
             BasicBlock* tierUpBB = BasicBlock::Create(ctx, "", func);
             normalBB = BasicBlock::Create(ctx, "", func);

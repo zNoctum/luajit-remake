@@ -64,6 +64,7 @@ SET(DEEGEN_COMMON_SNIPPET_IR_SOURCES
   unbox_tvalue_to_function_object.cpp
   set_jmp_dest.cpp
   get_jmp_dest.cpp
+  should_tier_up.cpp
 )
 
 add_library(deegen_common_snippet_ir_sources OBJECT

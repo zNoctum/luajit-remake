@@ -1288,8 +1288,11 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
                     case ELF::R_X86_64_64:
                         kind = BaselineJitCondBrLatePatchKind::Int64;
                         break;
-                    default:
+                    case ELF::R_X86_64_32:
                         kind = BaselineJitCondBrLatePatchKind::Int32;
+                        break;
+                    default:
+                        ReleaseAssert(false && "Unexpected CondBr relocation record!");
                     }
                     res.m_condBrFixupOffsets.push_back({ .m_offset = rr.m_offset, .m_kind = kind });
                 }
@@ -1603,7 +1606,7 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
         }
         }
     }
-    fprintf(fp, "__builtin___clear_cache(reinterpret_cast<char*>(deegen_dstAddr), reinterpret_cast<char*>(deegen_dstAddr + %lluULL));\n", static_cast<unsigned long long>(codeLen));
+    fprintf(fp, "__builtin___clear_cache(reinterpret_cast<char*>(deegen_dstAddr), reinterpret_cast<char*>(deegen_dstAddr) + %lluULL);\n", static_cast<unsigned long long>(codeLen));
 
     fclose(fp);
     res.m_cppCode = file.GetFileContents();

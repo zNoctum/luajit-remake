@@ -1840,9 +1840,11 @@ static CreateCodegenCallIcLogicImplResult WARN_UNUSED CreateCodegenCallIcLogicIm
                     case ELF::R_X86_64_64:
                         kind = JitCallInlineCacheTraits::PatchRecordKind::Int64;
                         break;
-                    default:
+                    case ELF::R_X86_64_32:
                         kind = JitCallInlineCacheTraits::PatchRecordKind::Int32;
                         break;
+                    default:
+                        ReleaseAssert(false && "Unexpected Relocation Record!");
                     }
                     codePtrPatchRecords.push_back(std::make_pair(baseOffset + rr.m_offset, kind));
                 }

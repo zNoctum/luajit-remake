@@ -344,15 +344,19 @@ public:
             {
             case JitCallInlineCacheTraits::PatchRecordKind::G0:
                 UnalignedStore<uint32_t>(addr, updateInstr(UnalignedLoad<uint32_t>(addr), 0));
+                __builtin___clear_cache(reinterpret_cast<char*>(addr), reinterpret_cast<char*>(addr) + 4);
                 break;
             case JitCallInlineCacheTraits::PatchRecordKind::G1:
                 UnalignedStore<uint32_t>(addr, updateInstr(UnalignedLoad<uint32_t>(addr), 16));
+                __builtin___clear_cache(reinterpret_cast<char*>(addr), reinterpret_cast<char*>(addr) + 4);
                 break;
             case JitCallInlineCacheTraits::PatchRecordKind::G2:
                 UnalignedStore<uint32_t>(addr, updateInstr(UnalignedLoad<uint32_t>(addr), 32));
+                __builtin___clear_cache(reinterpret_cast<char*>(addr), reinterpret_cast<char*>(addr) + 4);
                 break;
             case JitCallInlineCacheTraits::PatchRecordKind::G3:
                 UnalignedStore<uint32_t>(addr, updateInstr(UnalignedLoad<uint32_t>(addr), 48));
+                __builtin___clear_cache(reinterpret_cast<char*>(addr), reinterpret_cast<char*>(addr) + 4);
                 break;
             case JitCallInlineCacheTraits::PatchRecordKind::Int32:
                 ReleaseAssert(false);
