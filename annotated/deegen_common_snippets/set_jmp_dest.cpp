@@ -4,7 +4,7 @@
 
 #define MASK(x) ((1U<<x)-1)
 
-static void DeegenSnippet_SetJmpDest(uint32_t* jmpEndAddr, void* newDest, uint32_t)
+static void DeegenSnippet_SetJmpDest(uint32_t* jmpEndAddr, void* newDest)
 {
     uint32_t *instrAddr = jmpEndAddr - 1;
     uint32_t instr = *instrAddr;

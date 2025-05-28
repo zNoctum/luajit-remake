@@ -3653,7 +3653,7 @@ AstInlineCache::BaselineJitCodegenResult WARN_UNUSED AstInlineCache::CreateJitIc
     //
     if (!isCodegenForInlineSlab)
     {
-        CreateCallToDeegenCommonSnippet(module.get(), "SetJmpDest", { patchableJmpEndAddr, destJitAddr, ConstantInt::get(llvm_type_of<uint32_t>(ctx), 0) }, bb);
+        CreateCallToDeegenCommonSnippet(module.get(), "SetJmpDest", { patchableJmpEndAddr, destJitAddr }, bb);
     }
 
     ReturnInst::Create(ctx, nullptr, bb);

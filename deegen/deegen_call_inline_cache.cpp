@@ -2497,7 +2497,7 @@ DeegenCallIcLogicCreator::BaselineJitCodegenResult WARN_UNUSED DeegenCallIcLogic
         Value* icMissAddr = X64PatchableJumpUtil::GetDest(patchableJmpEndAddr, insertIcDcModeBB);
         Value* icMissAddrI64 = new PtrToIntInst(icMissAddr, llvm_type_of<uint64_t>(ctx), "", insertIcDcModeBB);
 
-        CreateCallToDeegenCommonSnippet(module.get(), "SetJmpDest", { patchableJmpEndAddr, dcJitAddr /*newDest*/, ConstantInt::get(llvm_type_of<uint32_t>(ctx), 2) }, insertIcDcModeBB);
+        CreateCallToDeegenCommonSnippet(module.get(), "SetJmpDest", { patchableJmpEndAddr, dcJitAddr /*newDest*/ }, insertIcDcModeBB);
 
         Value* unboxed = CreateCallToDeegenCommonSnippet(module.get(), "UnboxTValueToFunctionObject", { tv }, insertIcDcModeBB);
         Value* codeBlockAndEntryPoint = CreateCallToDeegenCommonSnippet(module.get(), "GetCalleeEntryPoint", { unboxed }, insertIcDcModeBB);
@@ -2610,7 +2610,7 @@ DeegenCallIcLogicCreator::BaselineJitCodegenResult WARN_UNUSED DeegenCallIcLogic
         Value* icMissAddr = X64PatchableJumpUtil::GetDest(patchableJmpEndAddr, insertIcCcModeBB);
         Value* icMissAddrI64 = new PtrToIntInst(icMissAddr, llvm_type_of<uint64_t>(ctx), "", insertIcCcModeBB);
 
-        CreateCallToDeegenCommonSnippet(module.get(), "SetJmpDest", { patchableJmpEndAddr, jitAddr /*newDest*/, ConstantInt::get(llvm_type_of<uint32_t>(ctx), 1) }, insertIcCcModeBB);
+        CreateCallToDeegenCommonSnippet(module.get(), "SetJmpDest", { patchableJmpEndAddr, jitAddr /*newDest*/ }, insertIcCcModeBB);
 
         Value* unboxed = CreateCallToDeegenCommonSnippet(module.get(), "UnboxTValueToFunctionObject", { tv }, insertIcCcModeBB);
         Value* codeBlockAndEntryPoint = CreateCallToDeegenCommonSnippet(module.get(), "GetCalleeEntryPoint", { unboxed }, insertIcCcModeBB);
