@@ -11,6 +11,7 @@
 #include "baseline_jit_codegen_helper.h"
 #include "bytecode_builder_utils.h"
 #include <arm_neon.h>
+#include <bits/floatn-common.h>
 
 class StackFrameHeader;
 class CodeBlock;
@@ -1260,18 +1261,26 @@ inline double WARN_UNUSED ModulusWithLuaSemantics_PUCLuaReference_5_1(double a, 
 inline double WARN_UNUSED ALWAYS_INLINE ModulusWithLuaSemantics_5_1_NoSSE4(double a, double b)
 {
     return a - floor(a / b) * b;
-    /*if (b == 0.0)
-        return std::numeric_limits<double>::quiet_NaN();
-    double tmp = a - vget_lane_f64(vrndm_f64(vcreate_f64(a / b)), 0) * b;
-    if (tmp == 0.0)
-        return 0.0;
-    else
-        return tmp;*/
+    // We need this because on aarch64 a / 0.0 is either -inf, 0 or inf and not NaN
+    //
+    // if (b == 0.0)
+    // {
+    //     return std::numeric_limits<double>::quiet_NaN();
+    // }
+    // double tmp = a - vget_lane_f64(vrndm_f64(vcreate_f64(a / b)), 0) * b;
+    // if (tmp == 0.0)
+    // {
+    //     return 0.0;
+    // }
+    // else
+    // {
+    //     return tmp;
+    // }
 }
 
 inline double ALWAYS_INLINE WARN_UNUSED ModulusWithLuaSemantics(double a, double b)
 {
-    return ModulusWithLuaSemantics_PUCLuaReference_5_1(a, b);
+    return ModulusWithLuaSemantics_5_1_NoSSE4(a, b);
 }
 
 // A wrapper around libm pow that provides a fastpath if the exponent is an integer that fits in [-128, 127).

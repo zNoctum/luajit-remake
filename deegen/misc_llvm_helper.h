@@ -1771,15 +1771,6 @@ struct X64PatchableJumpUtil
         ReleaseAssert(llvm_value_has_type<void*>(jmpEndAddr));
         return CreateCallToDeegenCommonSnippet(module, "GetJmpDest", { jmpEndAddr }, insertAtEnd);
     }
-
-    static void SetDest(llvm::Value* jmpEndAddr, llvm::Value* newDest, llvm::BasicBlock* insertAtEnd)
-    {
-        using namespace llvm;
-        Module* module = insertAtEnd->getParent()->getParent();
-        ReleaseAssert(llvm_value_has_type<void*>(jmpEndAddr));
-        ReleaseAssert(llvm_value_has_type<void*>(newDest));
-        CreateCallToDeegenCommonSnippet(module, "SetJmpDest", { jmpEndAddr, newDest }, insertAtEnd);
-    }
 };
 
 }   // namespace dast

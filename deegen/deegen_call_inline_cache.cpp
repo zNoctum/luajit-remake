@@ -1434,8 +1434,20 @@ void DeegenCallIcLogicCreator::BaselineJitAsmTransformResult::FixupSMCRegionAfte
     block->m_lines.push_back(termJmp);
 
     ReleaseAssert(!block->m_endsWithJmpToLocalLabel);
-    block->m_endsWithJmpToLocalLabel = true;
-    block->m_terminalJmpTargetLabel = m_labelForCcIcMissLogic;
+    block->m_endsWithJmpToLocalLabel = false;
+    // block->m_terminalJmpTargetLabel = m_labelForCcIcMissLogic;
+    block->m_indirectBranchTargets.push_back(m_labelForCcIcMissLogic);
+
+    ReleaseAssert(block->m_lines.back().GetWord(0) == "b");
+    block->m_lines.pop_back();
+
+    block->m_lines.push_back(X64AsmLine::Parse("\tmovz\tx16, :abs_g0_nc:" + m_labelForCcIcMissLogic));
+    block->m_lines.push_back(X64AsmLine::Parse("\tmovk\tx16, :abs_g1_nc:" + m_labelForCcIcMissLogic));
+    block->m_lines.push_back(X64AsmLine::Parse("\tmovk\tx16, :abs_g2_nc:" + m_labelForCcIcMissLogic));
+    block->m_lines.push_back(X64AsmLine::Parse("\tmovk\tx16, :abs_g3:" + m_labelForCcIcMissLogic));
+    // block->m_lines.push_back(X64AsmLine::Parse("\tadrp\tx16, " + m_labelForCcIcMissLogic));
+    // block->m_lines.push_back(X64AsmLine::Parse("\tadd\tx16, x16, :lo12:" + m_labelForCcIcMissLogic));
+    block->m_lines.push_back(X64AsmLine::Parse("\tbr\tx16"));
 }
 
 void DeegenCallIcLogicCreator::BaselineJitAsmTransformResult::EmitComputeLabelOffsetAndLengthSymbol(X64AsmFile* file)
@@ -2111,14 +2123,19 @@ static void SetupCallIcSmcRegionInitialInstructions(DeegenStencil& mainLogicSten
                                                     size_t dcIcMissDestOffsetInSlowPath)
 {
     {
-        ReleaseAssert(smcRegionSize >= 4);
+        constexpr uint8_t code[] = {
+            16, 0, 128, 210, // movz x16, #0, lsl #0
+            16, 0, 160, 242, // movk x16, #0, lsl #16
+            16, 0, 192, 242, // movk x16, #0, lsl #32
+            16, 0, 224, 242, // movk x16, #0, lsl #48
+            0,  2, 31,  214  // br   x16
+        };
+        ReleaseAssert(smcRegionSize >= sizeof(code));
+
         std::vector<uint8_t> byteSeq;
         byteSeq.resize(smcRegionSize, 0);
-        byteSeq[0] = 0x00;  // b instruction
-        byteSeq[1] = 0x00;
-        byteSeq[2] = 0x00;
-        byteSeq[3] = 0x14;
-        FillAddressRangeWithX64MultiByteNOPs(byteSeq.data() + 4, byteSeq.size() - 4);
+        memcpy(byteSeq.data(), code, sizeof(code));
+        FillAddressRangeWithX64MultiByteNOPs(byteSeq.data() + sizeof(code), byteSeq.size() - sizeof(code));
 
         for (size_t i = 0; i < smcRegionSize; i++)
         {
@@ -2139,11 +2156,18 @@ static void SetupCallIcSmcRegionInitialInstructions(DeegenStencil& mainLogicSten
         rlist.push_back(rr);
     }
 
+    constexpr uint64_t relocTypes[] = {
+        llvm::ELF::R_AARCH64_MOVW_UABS_G0_NC,
+        llvm::ELF::R_AARCH64_MOVW_UABS_G1_NC,
+        llvm::ELF::R_AARCH64_MOVW_UABS_G2_NC,
+        llvm::ELF::R_AARCH64_MOVW_UABS_G3,
+    };
+    for (size_t i = 0; i < 4; i++)
     {
         RelocationRecord rr;
-        rr.m_relocationType = llvm::ELF::R_AARCH64_JUMP26;
+        rr.m_relocationType = relocTypes[i];
         rr.m_symKind = RelocationRecord::SymKind::SlowPathAddr;
-        rr.m_offset = smcRegionOffset;
+        rr.m_offset = smcRegionOffset + i*4;
         // SlowPathAddr + dcIcMissDestOffsetInSlowPath - PC
         //
         rr.m_addend = static_cast<int64_t>(dcIcMissDestOffsetInSlowPath);
@@ -2189,9 +2213,9 @@ DeegenCallIcLogicCreator::BaselineJitCodegenResult WARN_UNUSED DeegenCallIcLogic
     size_t smcRegionLength = mainLogicStencil.RetrieveLabelDistanceComputationResult(icInfo.m_symbolNameForSMCRegionLength);
     ReleaseAssert(smcRegionOffset < mainLogicStencil.m_fastPathCode.size());
     ReleaseAssert(smcRegionOffset + smcRegionLength <= mainLogicStencil.m_fastPathCode.size());
-    // The SMC region should at least be long enough to hold a jmp instruction, check that for sanity
+    // The SMC region should at least be long enough to hold a movz/movk + br sequence, check that for sanity
     //
-    ReleaseAssert(smcRegionLength >= 4);
+    ReleaseAssert(smcRegionLength >= 20);
 
     size_t dcIcMissDestOffset = mainLogicStencil.RetrieveLabelDistanceComputationResult(icInfo.m_symbolNameForDcIcMissLogicLabelOffset);
     ReleaseAssert(dcIcMissDestOffset < mainLogicStencil.m_slowPathCode.size());
@@ -2350,8 +2374,6 @@ DeegenCallIcLogicCreator::BaselineJitCodegenResult WARN_UNUSED DeegenCallIcLogic
         Value* calleeCb = ExtractValueInst::Create(codeBlockAndEntryPoint, { 0 /*idx*/ }, "", skipIcCreationBB);
         Value* codePointer = ExtractValueInst::Create(codeBlockAndEntryPoint, { 1 /*idx*/ }, "", skipIcCreationBB);
 
-        // we need to do this because llvm changes the internal representation of the return type for reasons, WHY?????
-        //
         if (llvm_value_has_type<uint64_t>(calleeCb))
             calleeCb = new IntToPtrInst(calleeCb, llvm_type_of<void*>(ctx), "", skipIcCreationBB);
         if (llvm_value_has_type<uint64_t>(codePointer))
@@ -2475,7 +2497,7 @@ DeegenCallIcLogicCreator::BaselineJitCodegenResult WARN_UNUSED DeegenCallIcLogic
         Value* icMissAddr = X64PatchableJumpUtil::GetDest(patchableJmpEndAddr, insertIcDcModeBB);
         Value* icMissAddrI64 = new PtrToIntInst(icMissAddr, llvm_type_of<uint64_t>(ctx), "", insertIcDcModeBB);
 
-        X64PatchableJumpUtil::SetDest(patchableJmpEndAddr, dcJitAddr /*newDest*/, insertIcDcModeBB);
+        CreateCallToDeegenCommonSnippet(module.get(), "SetJmpDest", { patchableJmpEndAddr, dcJitAddr /*newDest*/, ConstantInt::get(llvm_type_of<uint32_t>(ctx), 2) }, insertIcDcModeBB);
 
         Value* unboxed = CreateCallToDeegenCommonSnippet(module.get(), "UnboxTValueToFunctionObject", { tv }, insertIcDcModeBB);
         Value* codeBlockAndEntryPoint = CreateCallToDeegenCommonSnippet(module.get(), "GetCalleeEntryPoint", { unboxed }, insertIcDcModeBB);
@@ -2583,12 +2605,12 @@ DeegenCallIcLogicCreator::BaselineJitCodegenResult WARN_UNUSED DeegenCallIcLogic
         Value* jitAddr = new LoadInst(llvm_type_of<void*>(ctx), jitAddrAlloca, "", insertIcCcModeBB);
 
         Value* patchableJmpEndAddr = GetElementPtrInst::CreateInBounds(llvm_type_of<uint8_t>(ctx), fastPathAddrOfOwningStencil,
-                                                                       { CreateLLVMConstantInt<uint64_t>(ctx, smcRegionOffset + smcRegionLength) }, "", insertIcCcModeBB);
+                                                                       { CreateLLVMConstantInt<uint64_t>(ctx, smcRegionOffset + smcRegionLength - 16) }, "", insertIcCcModeBB);
 
         Value* icMissAddr = X64PatchableJumpUtil::GetDest(patchableJmpEndAddr, insertIcCcModeBB);
         Value* icMissAddrI64 = new PtrToIntInst(icMissAddr, llvm_type_of<uint64_t>(ctx), "", insertIcCcModeBB);
 
-        X64PatchableJumpUtil::SetDest(patchableJmpEndAddr, jitAddr /*newDest*/, insertIcCcModeBB);
+        CreateCallToDeegenCommonSnippet(module.get(), "SetJmpDest", { patchableJmpEndAddr, jitAddr /*newDest*/, ConstantInt::get(llvm_type_of<uint32_t>(ctx), 1) }, insertIcCcModeBB);
 
         Value* unboxed = CreateCallToDeegenCommonSnippet(module.get(), "UnboxTValueToFunctionObject", { tv }, insertIcCcModeBB);
         Value* codeBlockAndEntryPoint = CreateCallToDeegenCommonSnippet(module.get(), "GetCalleeEntryPoint", { unboxed }, insertIcCcModeBB);

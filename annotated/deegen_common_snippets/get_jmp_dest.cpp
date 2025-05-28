@@ -19,6 +19,8 @@ static void* DeegenSnippet_GetJmpDest(uint32_t* jmpEndAddr)
     //
     } else if (ident == 0x54) {
         diff = (static_cast<int64_t>(instr>>5)<<45)>>43;
+    } else if ((instr & ~(MASK(16)<<5)) == 0xd2800010) {
+        return reinterpret_cast<void*>(((instrAddr[0]>>5)&MASK(16)) + (((instrAddr[1]>>5)&MASK(16))<<16) + (((instrAddr[2]>>5)&MASK(16))<<32) + (((instrAddr[3]>>5)&MASK(16))<<48));
     } else {
         assert(false && "unexpected instruction for destination retrieval!");
     }

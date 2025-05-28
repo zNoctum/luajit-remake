@@ -2,9 +2,9 @@
 
 #include "define_deegen_common_snippet.h"
 
-#define MASK(x) ((1LL<<x)-1)
+#define MASK(x) ((1U<<x)-1)
 
-static void DeegenSnippet_SetJmpDest(uint32_t* jmpEndAddr, void* newDest)
+static void DeegenSnippet_SetJmpDest(uint32_t* jmpEndAddr, void* newDest, uint32_t)
 {
     uint32_t *instrAddr = jmpEndAddr - 1;
     uint32_t instr = *instrAddr;
@@ -19,18 +19,29 @@ static void DeegenSnippet_SetJmpDest(uint32_t* jmpEndAddr, void* newDest)
         // Assert that the offset is in the +-128MiB range of B and BL
         //
         assert((((diff&MASK(26))<<38)>>38) == diff);
-        instr = static_cast<uint32_t>((instr&~MASK(26))|(diff&MASK(26)));
+        instrAddr[0] = static_cast<uint32_t>((instr&~MASK(26))|(diff&MASK(26)));
+        __builtin___clear_cache(reinterpret_cast<char*>(instrAddr), reinterpret_cast<char*>(instrAddr) + 4);
     // b.cc and bc.cc instructions
     //
     } else if (ident == 0x54) {
         assert((((diff&MASK(19))<<45)>>45) == diff);
-        instr = static_cast<uint32_t>((instr&(~MASK(24)|MASK(5)))|((diff&MASK(19))<<5));
+        instrAddr[0] = static_cast<uint32_t>((instr&(~MASK(24)|MASK(5)))|((diff&MASK(19))<<5));
+        __builtin___clear_cache(reinterpret_cast<char*>(instrAddr), reinterpret_cast<char*>(instrAddr) + 4);
+    } else if ((instr& ~(MASK(16)<<5)) == 0xd2800010) {
+        // ReleaseAssert((((diff&MASK(31))<<33)>>33) == diff);
+        instrAddr[0] = (instrAddr[0] & ~(MASK(16)<<5)) | ((static_cast<uint32_t>(reinterpret_cast<uint64_t>(newDest))&MASK(16))<<5);
+        instrAddr[1] = (instrAddr[1] & ~(MASK(16)<<5)) | ((static_cast<uint32_t>(reinterpret_cast<uint64_t>(newDest)>>16)&MASK(16))<<5);
+        instrAddr[2] = (instrAddr[2] & ~(MASK(16)<<5)) | ((static_cast<uint32_t>(reinterpret_cast<uint64_t>(newDest)>>32)&MASK(16))<<5);
+        instrAddr[3] = (instrAddr[3] & ~(MASK(16)<<5)) | ((static_cast<uint32_t>(reinterpret_cast<uint64_t>(newDest)>>48)&MASK(16))<<5);
+
+        // uint32_t tmp = static_cast<uint32_t>((reinterpret_cast<uint64_t>(newDest) >> 12) - (reinterpret_cast<uint64_t>(instrAddr) >> 12));
+        // instrAddr[0] = ((tmp&0x3)<< 29) + (((tmp>>2)&MASK(19))<<5) + 0x90000010;                                    // adrp x16, #0
+        // instrAddr[1] = static_cast<uint32_t>(((reinterpret_cast<uint64_t>(newDest))&MASK(12))<<10) + 0x91000210;    // add  x16, x16, #0
+        // instrAddr[2] = 0xd61f0200;                                                                                  // blr  x16
+        __builtin___clear_cache(reinterpret_cast<char*>(instrAddr), reinterpret_cast<char*>(instrAddr) + 20);
     } else {
         assert(false && "Unexpected Instruction!");
     }
-    
-    *instrAddr = instr;
-    __builtin___clear_cache(reinterpret_cast<char*>(instrAddr), reinterpret_cast<char*>(jmpEndAddr));
     return;
 }
 
