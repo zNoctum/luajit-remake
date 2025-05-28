@@ -3193,6 +3193,18 @@ std::vector<AstInlineCache::BaselineJitAsmTransformResult> WARN_UNUSED AstInline
         block->m_trailingLabelLine = X64AsmLine::Parse(uniqLabel + ":");
         ReleaseAssert(block->m_trailingLabelLine.IsLocalLabel());
 
+        ReleaseAssert(block->m_lines.back().GetWord(0) == "b");
+        {
+            std::string label = block->m_lines.back().GetWord(1);
+            block->m_lines.pop_back();
+            block->m_lines.push_back(X64AsmLine::Parse("\tadrp\tx16, " + label));
+            block->m_lines.push_back(X64AsmLine::Parse("\tadd\tx16, x16, :lo12:" + label));
+            block->m_lines.push_back(X64AsmLine::Parse("\tbr\tx16"));
+
+            block->m_endsWithJmpToLocalLabel = false;
+            block->m_indirectBranchTargets.push_back(label);
+        }
+
         std::string smcRegionLengthMeasurementSym = file->EmitComputeLabelDistanceAsm(smcBlockLabel /*begin*/, uniqLabel /*end*/);
 
         if (smcRegionNopPaddingLen > 0)
@@ -3462,7 +3474,7 @@ AstInlineCache::BaselineJitCodegenResult WARN_UNUSED AstInlineCache::CreateJitIc
     Value* mainLogicDataSec = slowPathDataLayout->m_jitDataSecAddr.EmitGetValueLogic(slowPathData, bb);
     headerArgsList.push_back(new PtrToIntInst(mainLogicDataSec, llvm_type_of<uint64_t>(ctx), "", bb));
 
-    ReleaseAssert(inlineSlabInfo.m_smcRegionLength >= 4);
+    ReleaseAssert(inlineSlabInfo.m_smcRegionLength >= 12);
     Value* patchableJmpEndAddr = nullptr;
 
     // We must special-check for 'isCodegenForInlineSlab', because we are called after 'm_isInlineSlabUsed' has been set to true
@@ -3637,7 +3649,7 @@ AstInlineCache::BaselineJitCodegenResult WARN_UNUSED AstInlineCache::CreateJitIc
     //
     if (!isCodegenForInlineSlab)
     {
-        X64PatchableJumpUtil::SetDest(patchableJmpEndAddr, destJitAddr, bb);
+        CreateCallToDeegenCommonSnippet(module.get(), "SetJmpDest", { patchableJmpEndAddr, destJitAddr }, bb);
     }
 
     ReturnInst::Create(ctx, nullptr, bb);
@@ -3850,7 +3862,7 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
         size_t smcRegionLen = mainStencil.RetrieveLabelDistanceComputationResult(slRes.m_symbolNameForSMCRegionLength);
         size_t icMissSlowPathOffset = mainStencil.RetrieveLabelDistanceComputationResult(slRes.m_symbolNameForIcMissLogicLabelOffset);
 
-        ReleaseAssert(smcRegionLen == 4);
+        ReleaseAssert(smcRegionLen == 12);
 
         // Figure out if the IC may qualify for inline slab optimization
         // For now, for simplicity, we only enable inline slab optimization if the SMC region is at the tail position,
@@ -3888,7 +3900,7 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
 
                 // Figure out if the stencil ends with a jump to the next bytecode, if yes, strip it
                 //
-                ReleaseAssert(icStencil.m_icPathCode.size() >= 5);
+                ReleaseAssert(icStencil.m_icPathCode.size() >= 4);
                 if (fallthroughPlaceholderOrd != static_cast<size_t>(-1))
                 {
                     bool found = false;
@@ -3975,7 +3987,7 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
                 // The inline slab still must at least be able to accomodate a patchable jump
                 // This should be trivially true, because the IC check/branch miss logic is already longer than that
                 //
-                ReleaseAssert(inlineSlabSize >= 4);
+                ReleaseAssert(inlineSlabSize >= 12);
 
                 if (inlineSlabSize > x_maxAllowedInlineSlabSize)
                 {
@@ -4018,7 +4030,7 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
 
                     // Sanity check the decision makes sense
                     //
-                    ReleaseAssert(inlineSlabSize >= 5);
+                    ReleaseAssert(inlineSlabSize >= 12);
                     ReleaseAssert(inlineSlabSize <= x_maxAllowedInlineSlabSize);
                     ReleaseAssert(allInlineSlabEffects.size() >= minEffectsToCover);
 

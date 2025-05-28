@@ -190,6 +190,7 @@ std::vector<DeegenStencilExtractedICAsm> WARN_UNUSED RunStencilInlineCacheLogicE
         {
             for (size_t i = 0; i < block->m_lines.size(); i++)
             {
+                bool isB = false;
                 size_t wordIndex = 0;
 
                 if (block->m_lines[i].NumWords() > 3 && block->m_lines[i].GetWord(0).starts_with("tb"))
@@ -198,6 +199,11 @@ std::vector<DeegenStencilExtractedICAsm> WARN_UNUSED RunStencilInlineCacheLogicE
                 }
                 else if (block->m_lines[i].NumWords() > 1 && block->m_lines[i].GetWord(0).starts_with("b."))
                 {
+                    wordIndex = 1;
+                }
+                else if (block->m_lines[i].NumWords() > 1 && block->m_lines[i].GetWord(0) == "b")
+                {
+                    isB = true;
                     wordIndex = 1;
                 }
                 else if (block->m_lines[i].NumWords() > 2 && block->m_lines[i].GetWord(0).starts_with("cb"))
@@ -211,8 +217,16 @@ std::vector<DeegenStencilExtractedICAsm> WARN_UNUSED RunStencilInlineCacheLogicE
 
                 std::string label = block->m_lines[i].GetWord(wordIndex);
 
+                // This is the ic miss dest we want it do be contained in the b.ne instruction and not a veneer
+                //
+                // if (label == "__deegen_cp_placeholder_10003")
+                //     continue;
+
                 if (icBlockLabelNames.count(label))
                     continue;
+
+                // if (isB && label.starts_with("__deegen_cp_placeholder_"))
+                //     continue;
 
                 if (auto search = icVeneers.find(label); search != icVeneers.end())
                 {
@@ -230,6 +244,8 @@ std::vector<DeegenStencilExtractedICAsm> WARN_UNUSED RunStencilInlineCacheLogicE
                     veneer->m_lines.push_back(X64AsmLine::Parse("\tmovk\tx16,\t#:abs_g1_nc:" + label));
                     veneer->m_lines.push_back(X64AsmLine::Parse("\tmovk\tx16,\t#:abs_g2_nc:" + label));
                     veneer->m_lines.push_back(X64AsmLine::Parse("\tmovk\tx16,\t#:abs_g3:" + label));
+                    // veneer->m_lines.push_back(X64AsmLine::Parse("\tadrp\tx16,\t" + label));
+                    // veneer->m_lines.push_back(X64AsmLine::Parse("\tadd\tx16,\tx16,\t:lo12:" + label));
                     veneer->m_lines.push_back(X64AsmLine::Parse("\tbr\tx16"));
 
                     icVeneers.insert_or_assign(label, newVeneerLabel);
@@ -241,6 +257,12 @@ std::vector<DeegenStencilExtractedICAsm> WARN_UNUSED RunStencilInlineCacheLogicE
                 }
 
                 block->m_lines[i].GetWord(wordIndex) = label;
+
+                if (isB)
+                {
+                    block->m_terminalJmpTargetLabel = label;
+                    block->m_endsWithJmpToLocalLabel = true;
+                }
             }
         }
 
