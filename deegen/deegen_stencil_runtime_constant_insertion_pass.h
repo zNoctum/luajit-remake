@@ -257,16 +257,6 @@ public:
         m_rcRanges[label] = std::make_pair(lb, ub);
     }
 
-    static constexpr int64_t GetLowAddrRangeUB()
-    {
-        return (static_cast<int64_t>(1) << 31) - (16 << 20) - 2048;
-    }
-
-    void AddRawRuntimeConstantAsLowAddressFnPointer(uint64_t label)
-    {
-        AddRawRuntimeConstant(label, 1, GetLowAddrRangeUB());
-    }
-
     // Rewrite the function, returning a list of definitions for each derived runtime constant
     //
     std::vector<CPRuntimeConstantNodeBase*> WARN_UNUSED RunOnFunction(llvm::Function* func);

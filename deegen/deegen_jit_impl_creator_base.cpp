@@ -106,8 +106,8 @@ llvm::Value* WARN_UNUSED JitImplCreatorBase::GetSlowPathDataOffsetFromJitFastPat
     size_t ordinalToUse = useAliasStencilOrd ? CP_PLACEHOLDER_JIT_SLOW_PATH_DATA_OFFSET : 103 /*ordinal*/;
     return CreateOrGetConstantPlaceholderForOperand(ordinalToUse,
                                                     llvm_type_of<uint64_t>(insertBefore->getContext()),
-                                                    1 /*lowerBound*/,
-                                                    StencilRuntimeConstantInserter::GetLowAddrRangeUB(),
+                                                    0 /*lowerBound*/,
+                                                    UINT32_MAX /*upperBound*/,
                                                     insertBefore);
 }
 
@@ -298,8 +298,8 @@ void JitImplCreatorBase::CreateWrapperFunction()
             //
             Value* jitCodeBlockU64 = CreateConstantPlaceholderForOperand(104 /*ordinal*/,
                                                                          llvm_type_of<uint64_t>(ctx),
-                                                                         1,
-                                                                         m_stencilRcInserter.GetLowAddrRangeUB(),
+                                                                         0,
+                                                                         UINT32_MAX,
                                                                          currentBlock);
             Value* jitCodeBlockU32 = new TruncInst(jitCodeBlockU64, llvm_type_of<uint32_t>(ctx), "", currentBlock);
             Value* jitCodeBlock = CreateCallToDeegenCommonSnippet(GetModule(), "GetCbFromU32", { jitCodeBlockU32 }, currentBlock);
@@ -397,8 +397,8 @@ void JitImplCreatorBase::CreateWrapperFunction()
         {
             fallthroughTarget = CreateConstantPlaceholderForOperand(101 /*operandOrd*/,
                                                                     llvm_type_of<void*>(ctx),
-                                                                    1 /*valueLowerBound*/,
-                                                                    m_stencilRcInserter.GetLowAddrRangeUB(),
+                                                                    0 /*valueLowerBound*/,
+                                                                    UINT32_MAX,
                                                                     currentBlock);
         }
         else
@@ -418,8 +418,8 @@ void JitImplCreatorBase::CreateWrapperFunction()
         {
             condBrTarget = CreateConstantPlaceholderForOperand(102 /*operandOrd*/,
                                                                llvm_type_of<void*>(ctx),
-                                                               1 /*valueLowerBound*/,
-                                                               m_stencilRcInserter.GetLowAddrRangeUB(),
+                                                               0 /*valueLowerBound*/,
+                                                               UINT32_MAX,
                                                                currentBlock);
         }
         else

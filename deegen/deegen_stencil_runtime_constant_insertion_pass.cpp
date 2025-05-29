@@ -155,7 +155,7 @@ std::string WARN_UNUSED CPExprUnaryOp::PrintExprImpl(CpPlaceholderExprPrinter* p
 
 // the interval [lower, upper) is the interval given to absolute_symbol
 //
-llvm::GlobalVariable* WARN_UNUSED DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(llvm::Module* module, uint64_t ord, int64_t, int64_t)
+llvm::GlobalVariable* WARN_UNUSED DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(llvm::Module* module, uint64_t ord, int64_t lb, int64_t ub)
 {
     using namespace llvm;
     LLVMContext& ctx = module->getContext();
@@ -172,8 +172,8 @@ llvm::GlobalVariable* WARN_UNUSED DeegenInsertOrGetCopyAndPatchPlaceholderSymbol
         gv->setAlignment(MaybeAlign(1));
         gv->setDSOLocal(true);
         MDNode *MD = MDNode::get(ctx, {
-            ValueAsMetadata::get(ConstantInt::getSigned(llvm_type_of<uint64_t>(ctx), -1)),
-            ValueAsMetadata::get(ConstantInt::getSigned(llvm_type_of<uint64_t>(ctx), -1))
+            ValueAsMetadata::get(ConstantInt::getSigned(llvm_type_of<uint64_t>(ctx), lb)),
+            ValueAsMetadata::get(ConstantInt::getSigned(llvm_type_of<uint64_t>(ctx), ub))
         });
         gv->setMetadata(LLVMContext::MD_absolute_symbol, MD);
     }
@@ -494,11 +494,11 @@ end:
             ReleaseAssert(rcList.count(rc));
             uint64_t ord = rcList[rc].ord;
 
-            GlobalVariable* gv = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(module, ord, rc->m_bitWidth < 64 ? 0 : -1, rc->m_bitWidth < 64 ? static_cast<int64_t>(1ULL << rc->m_bitWidth) : -1);
+            GlobalVariable* gv = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(module, ord, rc->m_range.getLower().getSExtValue(), rc->m_range.getUpper().getSExtValue()+1);
             CPRawRuntimeConstant* rrc = dynamic_cast<CPRawRuntimeConstant*>(rc);
 
             // In the case that rc is the unadjusted address of either the fallthrough next bytecode or the condbr target
-            // we attach the deegen_short_call metadata so it gets force lowered to a b call instead of a GOT call.
+            // we attach the deegen_short_call metadata so it gets force lowered to a b call instead of a large call.
             //
             if (rrc && (rrc->m_label == 101 || rrc->m_label == 102))
             {

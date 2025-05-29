@@ -418,7 +418,7 @@ void DeegenFunctionEntryLogicCreator::GenerateBaselineJitStencil(std::unique_ptr
     std::vector<CPRuntimeConstantNodeBase*> rcDef;
     {
         StencilRuntimeConstantInserter rcInserter;
-        rcInserter.AddRawRuntimeConstantAsLowAddressFnPointer(101 /*fallthroughDest*/);
+        rcInserter.AddRawRuntimeConstant(101 /*fallthroughDest*/, 0, UINT32_MAX);
         rcDef = rcInserter.RunOnFunction(func);
     }
 
