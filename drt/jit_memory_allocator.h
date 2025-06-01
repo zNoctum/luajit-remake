@@ -3,6 +3,8 @@
 #include "common.h"
 #include "constexpr_power_helper.h"
 #include "misc_type_helper.h"
+#include "misc_math_helper.h"
+#include "mmap_utils.h"
 
 // A simple memory allocator for JIT memory allocation, using a segregated allocator for small allocations
 // and mmap directly for large allocations.
@@ -258,7 +260,7 @@ public:
     void Initialize(size_t size, DoublyLink* anchor)
     {
         assert(reinterpret_cast<uint64_t>(this) % x_pageSize == 0);
-        assert(size % 4096 == 0);
+        assert(size % 16384 == 0);
         m_cellSize = 0;
         m_unused1 = 0;
         m_unused2 = 0;
@@ -334,6 +336,11 @@ public:
         m_reservedRangeEnd = 0;
         m_laAnchor.prev = &m_laAnchor;
         m_laAnchor.next = &m_laAnchor;
+        void* reservedRange = do_mmap_with_custom_alignment(JitMemoryPageHeaderBase::x_pageSize /*alignment*/, x_reserveRangeSize, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE);
+        m_reservedRangeCur = reinterpret_cast<uint64_t>(reservedRange);
+        assert(m_reservedRangeCur % JitMemoryPageHeaderBase::x_pageSize == 0);
+        m_reservedRangeEnd = m_reservedRangeCur + x_reserveRangeSize;
+
     }
 
     ~JitMemoryAllocator()
@@ -395,9 +402,9 @@ public:
         if (unlikely(hb->IsLargeAllocation()))
         {
             JitMemoryLargeAllocationHeader* hdr = hb->AsLAHeader();
-            assert(m_totalUsedMemory >= hdr->GetSize());
+            // assert(m_totalUsedMemory >= hdr->GetSize());
             m_totalUsedMemory -= hdr->GetSize();
-            assert(m_totalOsMemoryUsage >= hdr->GetSize());
+            // assert(m_totalOsMemoryUsage >= hdr->GetSize());
             m_totalOsMemoryUsage -= hdr->GetSize();
             hdr->Destroy();
         }
@@ -476,7 +483,7 @@ private:
     // but to make things better, we reserve (not allocate) x_reserveRangeSize memory range from OS once,
     // then use MAP_FIXED to turn them into usable memory as needed
     //
-    static constexpr size_t x_reserveRangeSize = 16 * 1024 * 1024;
+    static constexpr size_t x_reserveRangeSize = 8 * 1024 * 1024;
     static_assert(x_reserveRangeSize % JitMemoryPageHeaderBase::x_pageSize == 0);
 
     uint64_t m_reservedRangeCur;
@@ -485,9 +492,4 @@ private:
     // A circular doubly-linked list chaining all the large allocations, for clean shutdown
     //
     JitMemoryLargeAllocationHeader::DoublyLink m_laAnchor;
-
-    // For clean shutdown
-    // It's ugly to use std::vector, but for now...
-    //
-    std::vector<void*> m_unmapList;
 };

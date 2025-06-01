@@ -3197,12 +3197,8 @@ std::vector<AstInlineCache::BaselineJitAsmTransformResult> WARN_UNUSED AstInline
         {
             std::string label = block->m_lines.back().GetWord(1);
             block->m_lines.pop_back();
-            block->m_lines.push_back(X64AsmLine::Parse("\tmovz\tx16, :abs_g0_nc:" + label));
-            block->m_lines.push_back(X64AsmLine::Parse("\tmovk\tx16, :abs_g1_nc:" + label));
-            block->m_lines.push_back(X64AsmLine::Parse("\tmovk\tx16, :abs_g2_nc:" + label));
-            block->m_lines.push_back(X64AsmLine::Parse("\tmovk\tx16, :abs_g3:" + label));
-            // block->m_lines.push_back(X64AsmLine::Parse("\tadrp\tx16, " + label));
-            // block->m_lines.push_back(X64AsmLine::Parse("\tadd\tx16, x16, :lo12:" + label));
+            block->m_lines.push_back(X64AsmLine::Parse("\tadrp\tx16, " + label));
+            block->m_lines.push_back(X64AsmLine::Parse("\tadd\tx16, x16, :lo12:" + label));
             block->m_lines.push_back(X64AsmLine::Parse("\tbr\tx16"));
 
             block->m_endsWithJmpToLocalLabel = false;
@@ -3479,7 +3475,7 @@ AstInlineCache::BaselineJitCodegenResult WARN_UNUSED AstInlineCache::CreateJitIc
     headerArgsList.push_back(new PtrToIntInst(mainLogicDataSec, llvm_type_of<uint64_t>(ctx), "", bb));
 
     ReleaseAssert(inlineSlabInfo.m_smcRegionLength >= 12);
-    Value* patchableJmpEndAddr = nullptr;
+    Value* patchableJmpAddr = nullptr;
 
     // We must special-check for 'isCodegenForInlineSlab', because we are called after 'm_isInlineSlabUsed' has been set to true
     //
@@ -3488,15 +3484,15 @@ AstInlineCache::BaselineJitCodegenResult WARN_UNUSED AstInlineCache::CreateJitIc
         // We are generating the inline slab, so the SMC region is in the initial b + nop form
         //
         ReleaseAssert(inlineSlabInfo.m_hasInlineSlab);
-        patchableJmpEndAddr = GetElementPtrInst::CreateInBounds(llvm_type_of<uint8_t>(ctx), mainLogicFastPath,
-                                                                { CreateLLVMConstantInt<uint64_t>(ctx, inlineSlabInfo.m_smcRegionOffset + 4) }, "", bb);
+        patchableJmpAddr = GetElementPtrInst::CreateInBounds(llvm_type_of<uint8_t>(ctx), mainLogicFastPath,
+                                                                { CreateLLVMConstantInt<uint64_t>(ctx, inlineSlabInfo.m_smcRegionOffset) }, "", bb);
     }
     else if (!inlineSlabInfo.m_hasInlineSlab)
     {
         // No inline slab is possible for this IC, no need to check anything. The SMC region is in the initial nop form
         //
-        patchableJmpEndAddr = GetElementPtrInst::CreateInBounds(llvm_type_of<uint8_t>(ctx), mainLogicFastPath,
-                                                                { CreateLLVMConstantInt<uint64_t>(ctx, inlineSlabInfo.m_smcRegionOffset + 4) }, "", bb);
+        patchableJmpAddr = GetElementPtrInst::CreateInBounds(llvm_type_of<uint8_t>(ctx), mainLogicFastPath,
+                                                                { CreateLLVMConstantInt<uint64_t>(ctx, inlineSlabInfo.m_smcRegionOffset) }, "", bb);
     }
     else
     {
@@ -3528,12 +3524,12 @@ AstInlineCache::BaselineJitCodegenResult WARN_UNUSED AstInlineCache::CreateJitIc
             "",
             bb);
 
-        patchableJmpEndAddr = GetElementPtrInst::CreateInBounds(llvm_type_of<uint8_t>(ctx), mainLogicFastPath,
+        patchableJmpAddr = GetElementPtrInst::CreateInBounds(llvm_type_of<uint8_t>(ctx), mainLogicFastPath,
                                                                 { patchableJumpEndOffset }, "", bb);
     }
-    ReleaseAssert(patchableJmpEndAddr != nullptr && llvm_value_has_type<void*>(patchableJmpEndAddr));
+    ReleaseAssert(patchableJmpAddr != nullptr && llvm_value_has_type<void*>(patchableJmpAddr));
 
-    Value* missDestForThisIc = X64PatchableJumpUtil::GetDest(patchableJmpEndAddr, bb);
+    Value* missDestForThisIc = X64PatchableJumpUtil::GetDest(patchableJmpAddr, bb);
     Value* missDestForThisIcI64 = new PtrToIntInst(missDestForThisIc, llvm_type_of<uint64_t>(ctx), "", bb);
 
     Value* condBrDest = nullptr;
@@ -3653,7 +3649,7 @@ AstInlineCache::BaselineJitCodegenResult WARN_UNUSED AstInlineCache::CreateJitIc
     //
     if (!isCodegenForInlineSlab)
     {
-        CreateCallToDeegenCommonSnippet(module.get(), "SetJmpDest", { patchableJmpEndAddr, destJitAddr }, bb);
+        CreateCallToDeegenCommonSnippet(module.get(), "SetJmpDest", { patchableJmpAddr, destJitAddr }, bb);
     }
 
     ReturnInst::Create(ctx, nullptr, bb);
@@ -3866,7 +3862,7 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
         size_t smcRegionLen = mainStencil.RetrieveLabelDistanceComputationResult(slRes.m_symbolNameForSMCRegionLength);
         size_t icMissSlowPathOffset = mainStencil.RetrieveLabelDistanceComputationResult(slRes.m_symbolNameForIcMissLogicLabelOffset);
 
-        ReleaseAssert(smcRegionLen == 20);
+        ReleaseAssert(smcRegionLen == 12);
 
         // Figure out if the IC may qualify for inline slab optimization
         // For now, for simplicity, we only enable inline slab optimization if the SMC region is at the tail position,

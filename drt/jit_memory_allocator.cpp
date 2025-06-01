@@ -1,6 +1,4 @@
 #include "jit_memory_allocator.h"
-#include "misc_math_helper.h"
-#include "mmap_utils.h"
 
 void JitMemoryLargeAllocationHeader::Destroy()
 {
@@ -17,12 +15,13 @@ JitMemoryPageHeader* WARN_UNUSED JitMemoryAllocator::AllocateUninitalizedPage()
     constexpr size_t x_pageSize = JitMemoryPageHeaderBase::x_pageSize;
     if (unlikely(m_reservedRangeCur == m_reservedRangeEnd))
     {
-        void* reservedRange = do_mmap_with_custom_alignment(x_pageSize /*alignment*/, x_reserveRangeSize, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE);
-        m_reservedRangeCur = reinterpret_cast<uint64_t>(reservedRange);
-        assert(m_reservedRangeCur % x_pageSize == 0);
-        m_reservedRangeEnd = m_reservedRangeCur + x_reserveRangeSize;
+        ReleaseAssert(false && "We can't allocate more JIT memory because this breaks our expectation that every piece of jit code can jump to any other with a relative address diffrence of <8GiB");
+        // void* reservedRange = do_mmap_with_custom_alignment(x_pageSize /*alignment*/, x_reserveRangeSize, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE);
+        // m_reservedRangeCur = reinterpret_cast<uint64_t>(reservedRange);
+        // assert(m_reservedRangeCur % x_pageSize == 0);
+        // m_reservedRangeEnd = m_reservedRangeCur + x_reserveRangeSize;
 
-        m_unmapList.push_back(reservedRange);
+        // m_unmapList.push_back(reservedRange);
     }
 
     assert(m_reservedRangeCur + x_pageSize <= m_reservedRangeEnd);
@@ -42,19 +41,32 @@ JitMemoryPageHeader* WARN_UNUSED JitMemoryAllocator::AllocateUninitalizedPage()
 void* WARN_UNUSED JitMemoryAllocator::DoLargeAllocation(size_t size)
 {
     constexpr size_t x_pageSize = JitMemoryPageHeaderBase::x_pageSize;
+    size = RoundUpToMultipleOf<16384>(size + sizeof(JitMemoryLargeAllocationHeader));
 
-    size = RoundUpToMultipleOf<4096>(size + sizeof(JitMemoryLargeAllocationHeader));
+    if (unlikely(m_reservedRangeCur + size >= m_reservedRangeEnd))
+    {
+        ReleaseAssert(false && "We can't allocate more JIT memory because this breaks our expectation that every piece of jit code can jump to any other with a relative address diffrence of <8GiB");
+        // void* reservedRange = do_mmap_with_custom_alignment(x_pageSize /*alignment*/, x_reserveRangeSize, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE);
+        // m_reservedRangeCur = reinterpret_cast<uint64_t>(reservedRange);
+        // assert(m_reservedRangeCur % x_pageSize == 0);
+        // m_reservedRangeEnd = m_reservedRangeCur + x_reserveRangeSize;
 
-    void* ptrVoid = do_mmap_with_custom_alignment(x_pageSize /*alignment*/,
-                                                  size /*length*/,
-                                                  PROT_READ | PROT_WRITE | PROT_EXEC,
-                                                  MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE);
+        // m_unmapList.push_back(reservedRange);
+    }
 
-    JitMemoryLargeAllocationHeader* hdr = reinterpret_cast<JitMemoryLargeAllocationHeader*>(ptrVoid);
-    hdr->Initialize(size, &m_laAnchor);
+    assert(m_reservedRangeCur + x_pageSize <= m_reservedRangeEnd);
+    assert(m_reservedRangeCur % x_pageSize == 0);
+    void* addr = reinterpret_cast<void*>(m_reservedRangeCur);
+    m_reservedRangeCur += size;
 
-    m_totalUsedMemory += size;
+    void* r = mmap(addr, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE | MAP_FIXED, -1, 0);
+    VM_FAIL_WITH_ERRNO_IF(r == MAP_FAILED, "Failed to allocate JIT memory of size %llu", static_cast<unsigned long long>(x_pageSize));
+    assert(addr == r);
+
     m_totalOsMemoryUsage += size;
+
+    JitMemoryLargeAllocationHeader* hdr = reinterpret_cast<JitMemoryLargeAllocationHeader*>(addr);
+    hdr->Initialize(size, &m_laAnchor);
 
     void* res = hdr->GetAllocatedObject();
     assert(reinterpret_cast<uint64_t>(res) % 16 == 0);
@@ -73,11 +85,6 @@ void JitMemoryAllocator::Shutdown()
     assert(m_laAnchor.next == &m_laAnchor);
 
     m_totalOsMemoryUsage += m_reservedRangeEnd - m_reservedRangeCur;
-    for (void* ptr : m_unmapList)
-    {
-        do_munmap(ptr, x_reserveRangeSize);
-        m_totalOsMemoryUsage -= x_reserveRangeSize;
-    }
 
-    assert(m_totalOsMemoryUsage == 0);
+    // assert(m_totalOsMemoryUsage == 0);
 }

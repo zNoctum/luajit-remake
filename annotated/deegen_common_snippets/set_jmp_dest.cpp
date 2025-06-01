@@ -4,10 +4,9 @@
 
 #define MASK(x) ((1U<<x)-1)
 
-static void DeegenSnippet_SetJmpDest(uint32_t* jmpEndAddr, void* newDest)
+static void DeegenSnippet_SetJmpDest(uint32_t* instrAddr, void* newDest)
 {
-    uint32_t *instrAddr = jmpEndAddr - 1;
-    uint32_t instr = *instrAddr;
+    uint32_t instr = instrAddr[0];
     uint8_t ident = instr>>24;
     uint64_t diff = reinterpret_cast<uint64_t>(newDest) - reinterpret_cast<uint64_t>(instrAddr);
 
@@ -27,18 +26,13 @@ static void DeegenSnippet_SetJmpDest(uint32_t* jmpEndAddr, void* newDest)
         assert((((diff&MASK(19))<<45)>>45) == diff);
         instrAddr[0] = static_cast<uint32_t>((instr&(~MASK(24)|MASK(5)))|((diff&MASK(19))<<5));
         __builtin___clear_cache(reinterpret_cast<char*>(instrAddr), reinterpret_cast<char*>(instrAddr) + 4);
-    } else if ((instr& ~(MASK(16)<<5)) == 0xd2800010) {
-        // ReleaseAssert((((diff&MASK(31))<<33)>>33) == diff);
-        instrAddr[0] = (instrAddr[0] & ~(MASK(16)<<5)) | ((static_cast<uint32_t>(reinterpret_cast<uint64_t>(newDest))&MASK(16))<<5);
-        instrAddr[1] = (instrAddr[1] & ~(MASK(16)<<5)) | ((static_cast<uint32_t>(reinterpret_cast<uint64_t>(newDest)>>16)&MASK(16))<<5);
-        instrAddr[2] = (instrAddr[2] & ~(MASK(16)<<5)) | ((static_cast<uint32_t>(reinterpret_cast<uint64_t>(newDest)>>32)&MASK(16))<<5);
-        instrAddr[3] = (instrAddr[3] & ~(MASK(16)<<5)) | ((static_cast<uint32_t>(reinterpret_cast<uint64_t>(newDest)>>48)&MASK(16))<<5);
-
-        // uint32_t tmp = static_cast<uint32_t>((reinterpret_cast<uint64_t>(newDest) >> 12) - (reinterpret_cast<uint64_t>(instrAddr) >> 12));
-        // instrAddr[0] = ((tmp&0x3)<< 29) + (((tmp>>2)&MASK(19))<<5) + 0x90000010;                                    // adrp x16, #0
-        // instrAddr[1] = static_cast<uint32_t>(((reinterpret_cast<uint64_t>(newDest))&MASK(12))<<10) + 0x91000210;    // add  x16, x16, #0
-        // instrAddr[2] = 0xd61f0200;                                                                                  // blr  x16
-        __builtin___clear_cache(reinterpret_cast<char*>(instrAddr), reinterpret_cast<char*>(instrAddr) + 20);
+    } else if ((ident&0x9f) == 0x90) {
+        ReleaseAssert(static_cast<uint64_t>(static_cast<int64_t>((diff&MASK(31))<<33)>>33) == diff);
+        uint32_t tmp = static_cast<uint32_t>((reinterpret_cast<uint64_t>(newDest) >> 12) - (reinterpret_cast<uint64_t>(instrAddr) >> 12));
+        instrAddr[0] = ((tmp&MASK(2))<< 29) + (((tmp>>2)&MASK(19))<<5) + 0x90000010;                                // adrp x16, #0
+        instrAddr[1] = static_cast<uint32_t>(((reinterpret_cast<uint64_t>(newDest))&MASK(12))<<10) + 0x91000210;    // add  x16, x16, #0
+        instrAddr[2] = 0xd61f0200;                                                                                  // blr  x16
+        __builtin___clear_cache(reinterpret_cast<char*>(instrAddr), reinterpret_cast<char*>(instrAddr) + 12);
     } else {
         assert(false && "Unexpected Instruction!");
     }

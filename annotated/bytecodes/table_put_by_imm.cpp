@@ -187,8 +187,8 @@ static void NO_RETURN TablePutByImmImpl(TValue base, int16_t index, TValue value
                     ArrayType c_newArrayType = c_info.m_newArrayType;
                     return ic->Effect([tableObj, index, valueToPut, c_valueCK, c_expectedHiddenClass, c_newHiddenClass, c_newArrayType]() {
                         IcSpecializeValueFullCoverage(c_valueCK, ValueCheckKind::Double, ValueCheckKind::NotNil);
-                        IcSpecifyCaptureAs2GBPointerNotNull(c_expectedHiddenClass);
-                        IcSpecifyCaptureAs2GBPointerNotNull(c_newHiddenClass);
+                        IcSpecifyCaptureValueRange(c_expectedHiddenClass, 0, UINT32_MAX);
+                        IcSpecifyCaptureValueRange(c_newHiddenClass, 0, UINT32_MAX);
                         if (likely(TableObject::CheckValueMeetsPreconditionForPutByIntegerIndexFastPath(valueToPut, c_valueCK)))
                         {
                             // PreparePutByIntegerIndex only create IC with IndexCheckKind::NoArrayPart if the index is x_arrayBaseOrd.
@@ -301,8 +301,8 @@ static void NO_RETURN TablePutByImmImpl(TValue base, int16_t index, TValue value
                     ArrayType c_newArrayType = c_info.m_newArrayType;
                     return ic->Effect([tableObj, index, valueToPut, c_valueCK, c_expectedHiddenClass, c_newHiddenClass, c_newArrayType]() {
                         IcSpecializeValueFullCoverage(c_valueCK, ValueCheckKind::Double, ValueCheckKind::NotNil);
-                        IcSpecifyCaptureAs2GBPointerNotNull(c_expectedHiddenClass);
-                        IcSpecifyCaptureAs2GBPointerNotNull(c_newHiddenClass);
+                        IcSpecifyCaptureValueRange(c_expectedHiddenClass, 0, UINT32_MAX);
+                        IcSpecifyCaptureValueRange(c_newHiddenClass, 0, UINT32_MAX);
 
                         {
                             // Check for metamethod call

@@ -4,10 +4,9 @@
 
 #define MASK(x) ((1ULL<<x)-1)
 
-static void* DeegenSnippet_GetJmpDest(uint32_t* jmpEndAddr)
+static void* DeegenSnippet_GetJmpDest(uint32_t* instrAddr)
 {
-    uint32_t *instrAddr = jmpEndAddr - 1;
-    uint32_t instr = *instrAddr;
+    uint32_t instr = instrAddr[0];
     uint8_t ident = instr>>24;
     int64_t diff = 0;
 
@@ -19,8 +18,10 @@ static void* DeegenSnippet_GetJmpDest(uint32_t* jmpEndAddr)
     //
     } else if (ident == 0x54) {
         diff = (static_cast<int64_t>(instr>>5)<<45)>>43;
-    } else if ((instr & ~(MASK(16)<<5)) == 0xd2800010) {
-        return reinterpret_cast<void*>(((instrAddr[0]>>5)&MASK(16)) + (((instrAddr[1]>>5)&MASK(16))<<16) + (((instrAddr[2]>>5)&MASK(16))<<32) + (((instrAddr[3]>>5)&MASK(16))<<48));
+    } else if ((ident&0x9f) == 0x90) {
+        uint64_t addr = static_cast<uint64_t>((static_cast<int64_t>(((instr>>29)&MASK(2))+(((instr>>5)&MASK(19))<<2))<<43)>>43);
+        addr += reinterpret_cast<uint64_t>(instrAddr)>>12;
+        return reinterpret_cast<void*>((addr << 12) + ((instrAddr[1]>>10)&MASK(12)));
     } else {
         assert(false && "unexpected instruction for destination retrieval!");
     }

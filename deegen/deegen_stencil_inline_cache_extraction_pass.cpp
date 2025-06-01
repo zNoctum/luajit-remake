@@ -239,13 +239,8 @@ std::vector<DeegenStencilExtractedICAsm> WARN_UNUSED RunStencilInlineCacheLogicE
                     veneer->m_prefixText = newVeneerLabel + ":\n";
                     veneer->m_normalizedLabelName = newVeneerLabel;
                     veneer->m_endsWithJmpToLocalLabel = false;
-                    veneer->m_terminalJmpTargetLabel = label;
-                    veneer->m_lines.push_back(X64AsmLine::Parse("\tmovz\tx16,\t#:abs_g0_nc:" + label));
-                    veneer->m_lines.push_back(X64AsmLine::Parse("\tmovk\tx16,\t#:abs_g1_nc:" + label));
-                    veneer->m_lines.push_back(X64AsmLine::Parse("\tmovk\tx16,\t#:abs_g2_nc:" + label));
-                    veneer->m_lines.push_back(X64AsmLine::Parse("\tmovk\tx16,\t#:abs_g3:" + label));
-                    // veneer->m_lines.push_back(X64AsmLine::Parse("\tadrp\tx16,\t" + label));
-                    // veneer->m_lines.push_back(X64AsmLine::Parse("\tadd\tx16,\tx16,\t:lo12:" + label));
+                    veneer->m_lines.push_back(X64AsmLine::Parse("\tadrp\tx16,\t" + label));
+                    veneer->m_lines.push_back(X64AsmLine::Parse("\tadd\tx16,\tx16,\t:lo12:" + label));
                     veneer->m_lines.push_back(X64AsmLine::Parse("\tbr\tx16"));
 
                     icVeneers.insert_or_assign(label, newVeneerLabel);

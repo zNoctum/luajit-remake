@@ -1518,7 +1518,7 @@ static PrintStencilCodegenLogicResult WARN_UNUSED PrintStencilCodegenLogicImpl(
             emitSymbolValue(rr);
 
             UnalignedStore<uint32_t>(buf + rr.m_offset, 0);
-            fprintf(fp, "uint32_t tmp = static_cast<uint32_t>((PAGE(deegen_patch_symval + %lluULL) - PAGE(reinterpret_cast<uint64_t>(deegen_dstAddr) + %lluULL)) >> 12);\n",
+            fprintf(fp, "uint32_t tmp = static_cast<uint32_t>( ((deegen_patch_symval + %lluULL) >> 12) - ((reinterpret_cast<uint64_t>(deegen_dstAddr) + %lluULL) >> 12) );\n",
                     static_cast<unsigned long long>(rr.m_addend),
                     static_cast<unsigned long long>(rr.m_offset));
             fprintf(fp, "tmp = static_cast<uint32_t>(((tmp&MASK(2))<<29) + (((tmp>>2)&MASK(19))<<5)) + static_cast<uint32_t>(%lluULL);\n", static_cast<unsigned long long>(oldVal));
