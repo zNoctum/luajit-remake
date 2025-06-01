@@ -101,6 +101,7 @@ struct X64AsmLine
         std::string& opcode = GetWord(0);
         if (opcode == "br" || opcode == "b" || opcode == "bl" || opcode == "blr") { return false; }
         // hopefully this is good enough..
+        //
         return opcode.starts_with("b.") || opcode == "cbnz" || opcode == "cbz" || opcode == "tbnz" || opcode == "tbz";
     }
 
@@ -109,13 +110,53 @@ struct X64AsmLine
         ReleaseAssert(IsConditionalJumpInst());
         std::string& opcode = GetWord(0);
         ReleaseAssert(opcode.starts_with("b."));
-        if (opcode.starts_with("b.n"))
+
+        const std::pair<std::string, std::string> pairs[] = {
+            {"b.ne", "b.eq"},
+            {"b.ge", "b.lt"},
+            {"b.gt", "b.le"},
+            {"b.vs", "b.vc"},
+            {"b.hs", "b.lo"},
+            {"b.hi", "b.ls"},
+        };
+
+        for (std::pair<std::string, std::string> pair : pairs)
         {
-            opcode = "b." + opcode.substr(2);
+            if (pair.first == opcode)
+            {
+                opcode = pair.second;
+                return;
+            }
+            else if (pair.second == opcode)
+            {
+                opcode = pair.first;
+                return;
+            }
+        }
+
+        ReleaseAssert(false && "");
+    }
+
+    std::string& GetLabel()
+    {
+        std::string& opcode = GetWord(0);
+        ReleaseAssert(IsConditionalJumpInst() || IsDirectUnconditionalJumpInst());
+
+        if (opcode.starts_with("b"))
+        {
+            return GetWord(1);
+        }
+        else if (opcode.starts_with("cb"))
+        {
+            return GetWord(2);
+        }
+        else if (opcode.starts_with("tb"))
+        {
+            return GetWord(3);
         }
         else
         {
-            opcode = "b.n" + opcode.substr(1);
+            ReleaseAssert(false);
         }
     }
 

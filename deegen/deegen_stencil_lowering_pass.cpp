@@ -236,6 +236,362 @@ retry:
 // After the rewrite the jmp-to-YYYYY would be unnecessary.
 // Fortunately due to how we canonicalize the ASM blocks, those jumps will be automatically removed in the end
 //
+static void AttemptToTransformDispatchToNextBytecodeIntoFallthrough(X64AsmFile* file /*inout*/,
+                                                                    uint32_t locIdent,
+                                                                    [[maybe_unused]] const std::string& fnNameForDebug,
+                                                                    const std::string& fallthroughPlaceholderName,
+                                                                    std::unordered_set<std::string> blocksMustNotSplit)
+{
+    if (locIdent == 0)
+    {
+        return;
+    }
+
+    if (file->m_blocks.size() == 0)
+    {
+        return;
+    }
+
+    // If the last line is already a "JMP fallthrough", nothing to do
+    //
+    {
+        X64AsmBlock* block = file->m_blocks.back();
+        ReleaseAssert(block->m_lines.size() > 0);
+        if (block->m_lines.back().IsDirectUnconditionalJumpInst() && block->m_lines.back().GetWord(1) == fallthroughPlaceholderName)
+        {
+            return;
+        }
+    }
+
+    X64AsmBlock* targetBlock = nullptr;
+    size_t targetBlockOrd = static_cast<size_t>(-1);
+    for (size_t i = 0; i < file->m_blocks.size(); i++)
+    {
+        X64AsmBlock* block = file->m_blocks[i];
+        bool containsLocIdent = false;
+        for (X64AsmLine& line : block->m_lines)
+        {
+            if (line.m_rawLocIdent == locIdent)
+            {
+                containsLocIdent = true;
+                break;
+            }
+        }
+        if (containsLocIdent)
+        {
+            if (block->m_lines.back().IsDirectUnconditionalJumpInst() && block->m_lines.back().GetWord(1) == fallthroughPlaceholderName)
+            {
+                targetBlock = block;
+                targetBlockOrd = i;
+                break;
+            }
+        }
+    }
+
+    if (targetBlock == nullptr)
+    {
+        // In rare cases, it's possible that the debug info for the tail jmp is simply lost..
+        // In that case, simply pick an arbitrary tail jmp to 'fallthroughPlaceholderName' and do the optimization:
+        // for normal use cases this should just work equally well.
+        //
+        for (size_t i = 0; i < file->m_blocks.size(); i++)
+        {
+            X64AsmBlock* block = file->m_blocks[i];
+            ReleaseAssert(block->m_lines.size() > 0);
+            if (block->m_lines.back().IsDirectUnconditionalJumpInst() && block->m_lines.back().GetWord(1) == fallthroughPlaceholderName)
+            {
+                targetBlock = block;
+                targetBlockOrd = i;
+                break;
+            }
+        }
+    }
+
+    // If we still can't find a candidate, try to look for a 'JCC fallthrough; JMP XXX' pattern.
+    // If so, we can rewrite it to 'JNCC XXX; JMP fallthrough' and proceed with the transformation
+    //
+    // We record the place we did this rewrite, so if the transformation fails,
+    // we can undo the rewrite so that we only modify the assembly if we are able to achieve something useful
+    //
+    size_t jccRewriteBlockOrd = static_cast<size_t>(-1);
+    if (targetBlock == nullptr)
+    {
+        auto tryJccRewrite = [&](size_t blockOrd) WARN_UNUSED -> bool
+        {
+            ReleaseAssert(blockOrd < file->m_blocks.size());
+            X64AsmBlock* block = file->m_blocks[blockOrd];
+            if (block->m_lines.size() < 2)
+            {
+                return false;
+            }
+            X64AsmLine& terminator = block->m_lines.back();
+            X64AsmLine& lineBeforeTerm = block->m_lines[block->m_lines.size() - 2];
+            if (terminator.IsDirectUnconditionalJumpInst() &&
+                lineBeforeTerm.IsConditionalJumpInst() &&
+                lineBeforeTerm.GetWord(1) == fallthroughPlaceholderName)
+            {
+                ReleaseAssert(terminator.NumWords() == 2 && lineBeforeTerm.NumWords() == 2);
+                // This rewrite is only correct if JMP follows immediately by JCC.
+                // But the JMP instruction may have a pile of prefix texts (that are not normal assembly instructions).
+                // I think this is normally harmless since these are usually harmless directives. I can only think of an edge case
+                // where it contains ".byte" instructions (which we treat as opaque prefix bytes).
+                // For sanity, check this case and do not proceed if the word ".byte" is found. Hopefully this is good enough..
+                //
+                if (terminator.m_prefixingText.find(".byte ") != std::string::npos)
+                {
+                    return false;
+                }
+
+                lineBeforeTerm.FlipConditionalJumpCondition();
+                std::swap(lineBeforeTerm.GetWord(1), terminator.GetWord(1));
+
+                block->m_endsWithJmpToLocalLabel = false;
+
+                ReleaseAssert(jccRewriteBlockOrd == static_cast<size_t>(-1));
+                ReleaseAssert(targetBlock == nullptr && targetBlockOrd == static_cast<size_t>(-1));
+                jccRewriteBlockOrd = blockOrd;
+                targetBlock = block;
+                targetBlockOrd = blockOrd;
+
+                file->Validate();
+
+                return true;
+            }
+            return false;
+        };
+
+        // Try to use the block that corresponds to the line hint if possible
+        //
+        for (size_t i = 0; i < file->m_blocks.size(); i++)
+        {
+            X64AsmBlock* block = file->m_blocks[i];
+            bool containsLocIdent = false;
+            for (X64AsmLine& line : block->m_lines)
+            {
+                if (line.m_rawLocIdent == locIdent)
+                {
+                    containsLocIdent = true;
+                    break;
+                }
+            }
+            if (containsLocIdent)
+            {
+                if (tryJccRewrite(i))
+                {
+                    break;
+                }
+            }
+        }
+
+        // If the above fails, try any block
+        //
+        if (targetBlock == nullptr)
+        {
+            for (size_t i = 0; i < file->m_blocks.size(); i++)
+            {
+                if (tryJccRewrite(i))
+                {
+                    break;
+                }
+            }
+        }
+
+        ReleaseAssertIff(targetBlock != nullptr, jccRewriteBlockOrd != static_cast<size_t>(-1));
+    }
+
+    if (targetBlock == nullptr)
+    {
+        // If we still can't find a candidate, just skip this optimization.
+        //
+        //fprintf(stderr, "[NOTE] Failed to rewrite JIT stencil to eliminate jmp to fallthrough "
+        //                "because we cannot find a 'JMP fallthrough' or a qualifying 'JCC fallthrough' instruction "
+        //                "to do the rewrite (function name = %s).\n", fnNameForDebug.c_str());
+        return;
+    }
+
+    ReleaseAssert(targetBlock != nullptr);
+    ReleaseAssert(targetBlock->m_lines.size() > 0);
+    ReleaseAssert(targetBlock->m_lines.back().IsDirectUnconditionalJumpInst());
+    ReleaseAssert(targetBlock->m_lines.back().GetWord(1) == fallthroughPlaceholderName);
+
+    if (targetBlock == file->m_blocks.back())
+    {
+        // Already last line, nothing to do
+        //
+        return;
+    }
+
+    std::unordered_map<std::string, size_t /*blockOrd*/> labelMap;
+    for (size_t i = 0; i < file->m_blocks.size(); i++)
+    {
+        X64AsmBlock* block = file->m_blocks[i];
+        ReleaseAssert(!labelMap.count(block->m_normalizedLabelName));
+        labelMap[block->m_normalizedLabelName] = i;
+    }
+
+    size_t curBlockOrd = targetBlockOrd;
+    while (true)
+    {
+        // Attempt to do the rewrite using the terminator barrier instruction of 'block'
+        //
+        if (curBlockOrd < targetBlockOrd)
+        {
+            // No merit to do the rewrite using a fallthrough: doing that is just introducing a new jump to remove another jump
+            //
+            if (!file->IsTerminatorInstructionFallthrough(curBlockOrd))
+            {
+                // This is a barrier, we can do rewrite
+                //
+                //     jmp ...                       jmp ...
+                //     XXXXX                ===>     YYYYY
+                //     jmp next_bytecode             XXXXX
+                //     YYYYY                         jmp next_bytecode
+                //
+                std::vector<X64AsmBlock*> newList;
+                for (size_t i = 0; i <= curBlockOrd; i++)
+                {
+                    newList.push_back(file->m_blocks[i]);
+                }
+                for (size_t i = targetBlockOrd + 1; i < file->m_blocks.size(); i++)
+                {
+                    newList.push_back(file->m_blocks[i]);
+                }
+                for (size_t i = curBlockOrd + 1; i <= targetBlockOrd; i++)
+                {
+                    newList.push_back(file->m_blocks[i]);
+                }
+                ReleaseAssert(newList.size() == file->m_blocks.size());
+                file->m_blocks = newList;
+                return;
+            }
+        }
+
+        X64AsmBlock* block = file->m_blocks[curBlockOrd];
+
+        if (!blocksMustNotSplit.count(block->m_normalizedLabelName))
+        {
+            // Reverse scan for JCC instruction
+            //
+            for (size_t instOrd = block->m_lines.size(); instOrd-- > 0; /*no-op*/)
+            {
+                if (block->m_lines[instOrd].IsConditionalJumpInst())
+                {
+                    std::string dstLabel = block->m_lines[instOrd].GetWord(1);
+                    // If the label doesn't exist, it might be a symbol or a label in slow path, don't bother
+                    //
+                    if (labelMap.count(dstLabel))
+                    {
+                        size_t definedBlockOrd = labelMap[dstLabel];
+                        ReleaseAssert(file->m_blocks[definedBlockOrd]->m_normalizedLabelName == dstLabel);
+                        if (definedBlockOrd > targetBlockOrd)
+                        {
+                            // We can do the rewrite if 'definedLine' cannot be reached by fallthrough
+                            //
+                            ReleaseAssert(definedBlockOrd > 0);
+                            bool dstLabelCanBeReachedByFallthrough = file->IsTerminatorInstructionFallthrough(definedBlockOrd - 1);
+                            if (!dstLabelCanBeReachedByFallthrough)
+                            {
+                                //  /- jcc ...                jncc   -|
+                                //  |  XXXXX                  ZZZZZ   |
+                                //  |  jmp next_bc    ===>    YYYYY   |
+                                //  |  YYYYY                  XXXXX <--
+                                //  \->ZZZZZ                  jmp next_bc
+                                //
+                                std::vector<X64AsmBlock*> newList;
+                                for (size_t i = 0; i < curBlockOrd; i++)
+                                {
+                                    newList.push_back(file->m_blocks[i]);
+                                }
+
+                                // Split 'block' after JCC
+                                //
+                                X64AsmBlock* p1 = nullptr;
+                                X64AsmBlock* p2 = nullptr;
+                                block->SplitAtLine(file, instOrd + 1, p1 /*out*/, p2 /*out*/);
+                                ReleaseAssert(p1 != nullptr && p2 != nullptr);
+
+                                ReleaseAssert(p1->m_lines.size() == instOrd + 2);
+
+                                ReleaseAssert(p1->m_lines[instOrd].IsConditionalJumpInst());
+                                ReleaseAssert(p1->m_lines[instOrd].GetWord(1) == file->m_blocks[definedBlockOrd]->m_normalizedLabelName);
+                                ReleaseAssert(p1->m_lines[instOrd + 1].IsDirectUnconditionalJumpInst());
+                                ReleaseAssert(p1->m_lines[instOrd + 1].GetWord(1) == p2->m_normalizedLabelName);
+
+                                p1->m_lines[instOrd].FlipConditionalJumpCondition();
+                                p1->m_lines[instOrd].GetWord(1) = p2->m_normalizedLabelName;
+                                p1->m_lines[instOrd + 1].GetWord(1) = file->m_blocks[definedBlockOrd]->m_normalizedLabelName;
+                                ReleaseAssert(p1->m_endsWithJmpToLocalLabel);
+                                p1->m_terminalJmpTargetLabel = file->m_blocks[definedBlockOrd]->m_normalizedLabelName;
+
+                                newList.push_back(p1);
+
+                                for (size_t i = definedBlockOrd; i < file->m_blocks.size(); i++)
+                                {
+                                    newList.push_back(file->m_blocks[i]);
+                                }
+
+                                for (size_t i = targetBlockOrd + 1; i < definedBlockOrd; i++)
+                                {
+                                    newList.push_back(file->m_blocks[i]);
+                                }
+
+                                newList.push_back(p2);
+
+                                for (size_t i = curBlockOrd + 1; i <= targetBlockOrd; i++)
+                                {
+                                    newList.push_back(file->m_blocks[i]);
+                                }
+
+                                ReleaseAssert(newList.size() == file->m_blocks.size() + 1);
+                                file->m_blocks = newList;
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (curBlockOrd == 0)
+        {
+            //fprintf(stderr, "[NOTE] Failed to rewrite JIT stencil to eliminate jmp to fallthrough (function name = %s).\n", fnNameForDebug.c_str());
+            break;
+        }
+
+        curBlockOrd--;
+    }
+
+    // Having reached here, the transform has failed
+    // If we did the JCC rewrite, undo it so we don't change the assembly in any way
+    //
+    if (jccRewriteBlockOrd != static_cast<size_t>(-1))
+    {
+        ReleaseAssert(jccRewriteBlockOrd < file->m_blocks.size());
+        X64AsmBlock* block = file->m_blocks[jccRewriteBlockOrd];
+        ReleaseAssert(block->m_lines.size() >= 2);
+
+        X64AsmLine& terminator = block->m_lines.back();
+        X64AsmLine& lineBeforeTerm = block->m_lines[block->m_lines.size() - 2];
+        ReleaseAssert(terminator.NumWords() == 2 && lineBeforeTerm.NumWords() == 2);
+        ReleaseAssert(terminator.IsDirectUnconditionalJumpInst() && terminator.GetWord(1) == fallthroughPlaceholderName);
+        ReleaseAssert(lineBeforeTerm.IsConditionalJumpInst());
+
+        lineBeforeTerm.FlipConditionalJumpCondition();
+        std::swap(lineBeforeTerm.GetWord(1), terminator.GetWord(1));
+
+        if (file->m_labelNormalizer.QueryLabelExists(terminator.GetWord(1)))
+        {
+            block->m_endsWithJmpToLocalLabel = true;
+            block->m_terminalJmpTargetLabel = file->m_labelNormalizer.GetNormalizedLabel(terminator.GetWord(1));
+        }
+        else
+        {
+            block->m_endsWithJmpToLocalLabel = false;
+        }
+    }
+}
+
+
 
 DeegenStencilLoweringPass WARN_UNUSED DeegenStencilLoweringPass::RunIrRewritePhase(llvm::Function* f, const std::string& fallthroughPlaceholderName)
 {
@@ -444,7 +800,7 @@ void DeegenStencilLoweringPass::RunAsmRewritePhase(const std::string& asmFile)
     for (size_t i = 0; i < file->m_blocks.size(); i++)
     {
         X64AsmBlock* block = file->m_blocks[i];
-        if (block->m_lines.size() != 1 || block->m_lines[0].GetWord(0) != "b")
+        if (block->m_lines[0].IsDirectUnconditionalJumpInst())
             continue;
 
         std::string label = block->m_lines[0].GetWord(1);
@@ -468,29 +824,12 @@ void DeegenStencilLoweringPass::RunAsmRewritePhase(const std::string& asmFile)
     {
         for (size_t i = 0; i < block->m_lines.size(); i++)
         {
-            uint32_t wordIndex = 0;
-            if (block->m_lines[i].NumWords() > 3 && block->m_lines[i].GetWord(0).starts_with("tb"))
-            {
-                wordIndex = 3;
-            }
-            else if (block->m_lines[i].NumWords() > 1 && block->m_lines[i].GetWord(0) == "b")
-            {
-                wordIndex = 1;
-            }
-            else if (block->m_lines[i].NumWords() > 1 && block->m_lines[i].GetWord(0).starts_with("b.") && block->m_lines[i].GetWord(0) != "b.nv")
-            {
-                wordIndex = 1;
-            }
-            else if (block->m_lines[i].NumWords() > 2 && block->m_lines[i].GetWord(0).starts_with("cb"))
-            {
-                wordIndex = 2;
-            }
-            else
+            if (!block->m_lines[i].IsConditionalJumpInst() && !block->m_lines[i].IsDirectUnconditionalJumpInst())
             {
                 continue;
             }
 
-            shouldntDelete.insert(block->m_lines[i].GetWord(wordIndex));
+            shouldntDelete.insert(block->m_lines[i].GetLabel());
         }
     }
 
@@ -498,39 +837,24 @@ void DeegenStencilLoweringPass::RunAsmRewritePhase(const std::string& asmFile)
     {
         for (size_t i = 0; i < block->m_lines.size(); i++)
         {
-            uint32_t wordIndex = 0;
-            bool isB = false;
             if (block->m_lines[i].NumWords() > 3 && block->m_lines[i].GetWord(0).starts_with("tb"))
             {
                 shouldntDelete.insert(block->m_lines[i].GetWord(3));
             }
-            else if (block->m_lines[i].NumWords() > 1 && block->m_lines[i].GetWord(0) == "b")
-            {
-                isB = true;
-                wordIndex = 1;
-            }
-            else if (block->m_lines[i].NumWords() > 1 && block->m_lines[i].GetWord(0).starts_with("b.") && block->m_lines[i].GetWord(0) != "b.nv")
-            {
-                wordIndex = 1;
-            }
-            else if (block->m_lines[i].NumWords() > 2 && block->m_lines[i].GetWord(0).starts_with("cb"))
-            {
-                wordIndex = 2;
-            }
-            else
+            else if (!block->m_lines[i].IsConditionalJumpInst() && !block->m_lines[i].IsDirectUnconditionalJumpInst())
             {
                 continue;
             }
 
-            std::string label = block->m_lines[i].GetWord(wordIndex);
+            std::string label = block->m_lines[i].GetLabel();
 
             if (auto search = callVeneers.find(label); search != callVeneers.end())
             {
-                if (isB && block->m_lines.size() - 1 == i)
+                if (block->m_lines[i].IsDirectUnconditionalJumpInst() && block->m_lines.size() - 1 == i)
                 {
                     block->m_endsWithJmpToLocalLabel = false;
                 }
-                block->m_lines[i].GetWord(wordIndex) = search->second;
+                block->m_lines[i].GetLabel() = search->second;
             }
         }
     }
@@ -563,26 +887,10 @@ void DeegenStencilLoweringPass::RunAsmRewritePhase(const std::string& asmFile)
     {
         for (size_t i = 0; i < block->m_lines.size(); i++)
         {
-            size_t wordIndex = 0;
-            
-            if (block->m_lines[i].NumWords() > 3 && block->m_lines[i].GetWord(0).starts_with("tb"))
-            {
-                wordIndex = 3;
-            }
-            else if (block->m_lines[i].NumWords() > 1 && block->m_lines[i].GetWord(0).starts_with("b.") && block->m_lines[i].GetWord(0) != "b.nv")
-            {
-                wordIndex = 1;
-            }
-            else if (block->m_lines[i].NumWords() > 2 && block->m_lines[i].GetWord(0).starts_with("cb"))
-            {
-                wordIndex = 2;
-            }
-            else
-            {
+            if (block->m_lines[i].GetWord(0) == "b.nv" || !block->m_lines[i].IsConditionalJumpInst())
                 continue;
-            }
 
-            std::string label = block->m_lines[i].GetWord(wordIndex);
+            std::string label = block->m_lines[i].GetLabel();
 
             if (!slowPathBlockLabels.count(label))
                 continue;
@@ -611,7 +919,7 @@ void DeegenStencilLoweringPass::RunAsmRewritePhase(const std::string& asmFile)
                 file->m_blockHolders.push_back(std::move(veneer));
             }
 
-            block->m_lines[i].GetWord(wordIndex) = label;
+            block->m_lines[i].GetLabel() = label;
         }
     }
 
@@ -625,26 +933,10 @@ void DeegenStencilLoweringPass::RunAsmRewritePhase(const std::string& asmFile)
     {
         for (size_t i = 0; i < block->m_lines.size(); i++)
         {
-            size_t wordIndex = 0;
-            
-            if (block->m_lines[i].NumWords() > 3 && block->m_lines[i].GetWord(0).starts_with("tb"))
-            {
-                wordIndex = 3;
-            }
-            else if (block->m_lines[i].NumWords() > 1 && block->m_lines[i].GetWord(0).starts_with("b.") && block->m_lines[i].GetWord(0) != "b.nv")
-            {
-                wordIndex = 1;
-            }
-            else if (block->m_lines[i].NumWords() > 2 && block->m_lines[i].GetWord(0).starts_with("cb"))
-            {
-                wordIndex = 2;
-            }
-            else
-            {
+            if (block->m_lines[i].GetWord(0) == "b.nv" || !block->m_lines[i].IsConditionalJumpInst())
                 continue;
-            }
 
-            std::string label = block->m_lines[i].GetWord(wordIndex);
+            std::string label = block->m_lines[i].GetLabel();
 
             if (!fastPathBlockLabels.count(label))
                 continue;
@@ -673,7 +965,7 @@ void DeegenStencilLoweringPass::RunAsmRewritePhase(const std::string& asmFile)
                 file->m_blockHolders.push_back(std::move(veneer));
             }
 
-            block->m_lines[i].GetWord(wordIndex) = label;
+            block->m_lines[i].GetLabel() = label;
         }
     }
 
@@ -707,11 +999,11 @@ void DeegenStencilLoweringPass::RunAsmRewritePhase(const std::string& asmFile)
             blocksMustNotSplit.insert(item.m_labelForSMCRegion);
         }
 
-        //AttemptToTransformDispatchToNextBytecodeIntoFallthrough(file /*inout*/,
-        //                                                        m_locIdentForJmpToFallthroughCandidate,
-        //                                                        m_diInfo.GetFunc()->getName().str(),
-        //                                                        m_nextBytecodeFallthroughPlaceholderName,
-        //                                                        blocksMustNotSplit);
+        AttemptToTransformDispatchToNextBytecodeIntoFallthrough(file /*inout*/,
+                                                                m_locIdentForJmpToFallthroughCandidate,
+                                                                m_diInfo.GetFunc()->getName().str(),
+                                                                m_nextBytecodeFallthroughPlaceholderName,
+                                                                blocksMustNotSplit);
         cfg.m_cfg.clear();
         file->Validate();
     }
