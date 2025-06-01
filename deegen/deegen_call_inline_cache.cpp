@@ -1304,8 +1304,8 @@ std::vector<DeegenCallIcLogicCreator::BaselineJitAsmTransformResult> WARN_UNUSED
             ReleaseAssert(termJmp.IsDirectUnconditionalJumpInst() && termJmp.GetWord(1) == ccEntry->m_normalizedLabelName);
             termJmp.GetWord(1) = "__deegen_fake_jmp_dest";
 
-            smc->m_lines.push_back(X64AsmLine::Parse("\tb.nv\t" + ccIcMissSlowPathLabel));
-            smc->m_lines.push_back(X64AsmLine::Parse("\tb.nv\t" + dcIcMissSlowPathLabel));
+            smc->m_lines.push_back(X64AsmLine::CreateFakeJumpInst(ccIcMissSlowPathLabel));
+            smc->m_lines.push_back(X64AsmLine::CreateFakeJumpInst(dcIcMissSlowPathLabel));
             smc->m_lines.push_back(termJmp);
 
             ReleaseAssert(smc->m_endsWithJmpToLocalLabel);
@@ -1420,14 +1420,12 @@ void DeegenCallIcLogicCreator::BaselineJitAsmTransformResult::FixupSMCRegionAfte
     ReleaseAssert(termJmp.IsDirectUnconditionalJumpInst() && termJmp.GetWord(1) == "__deegen_fake_jmp_dest");
     block->m_lines.pop_back();
 
-    ReleaseAssert(block->m_lines.back().NumWords() == 2 &&
-                  block->m_lines.back().GetWord(0) == "b.nv" &&
-                  block->m_lines.back().GetWord(1) == m_labelForDcIcMissLogic);
+    ReleaseAssert(block->m_lines.back().IsFakeJumpInst() &&
+                  block->m_lines.back().GetLabel() == m_labelForDcIcMissLogic);
     block->m_lines.pop_back();
 
-    ReleaseAssert(block->m_lines.back().NumWords() == 2 &&
-                  block->m_lines.back().GetWord(0) == "b.nv" &&
-                  block->m_lines.back().GetWord(1) == m_labelForCcIcMissLogic);
+    ReleaseAssert(block->m_lines.back().IsFakeJumpInst() &&
+                  block->m_lines.back().GetLabel() == m_labelForCcIcMissLogic);
     block->m_lines.pop_back();
 
     termJmp.GetWord(1) = m_labelForCcIcMissLogic;

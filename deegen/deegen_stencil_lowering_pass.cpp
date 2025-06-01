@@ -887,7 +887,7 @@ void DeegenStencilLoweringPass::RunAsmRewritePhase(const std::string& asmFile)
     {
         for (size_t i = 0; i < block->m_lines.size(); i++)
         {
-            if (block->m_lines[i].GetWord(0) == "b.nv" || !block->m_lines[i].IsConditionalJumpInst())
+            if (block->m_lines[i].IsFakeJumpInst() || !block->m_lines[i].IsConditionalJumpInst())
                 continue;
 
             std::string label = block->m_lines[i].GetLabel();
@@ -933,7 +933,7 @@ void DeegenStencilLoweringPass::RunAsmRewritePhase(const std::string& asmFile)
     {
         for (size_t i = 0; i < block->m_lines.size(); i++)
         {
-            if (block->m_lines[i].GetWord(0) == "b.nv" || !block->m_lines[i].IsConditionalJumpInst())
+            if (block->m_lines[i].IsFakeJumpInst() || !block->m_lines[i].IsConditionalJumpInst())
                 continue;
 
             std::string label = block->m_lines[i].GetLabel();

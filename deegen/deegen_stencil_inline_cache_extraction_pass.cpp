@@ -190,32 +190,12 @@ std::vector<DeegenStencilExtractedICAsm> WARN_UNUSED RunStencilInlineCacheLogicE
         {
             for (size_t i = 0; i < block->m_lines.size(); i++)
             {
-                bool isB = false;
-                size_t wordIndex = 0;
-
-                if (block->m_lines[i].NumWords() > 3 && block->m_lines[i].GetWord(0).starts_with("tb"))
-                {
-                    wordIndex = 3;
-                }
-                else if (block->m_lines[i].NumWords() > 1 && block->m_lines[i].GetWord(0).starts_with("b."))
-                {
-                    wordIndex = 1;
-                }
-                else if (block->m_lines[i].NumWords() > 1 && block->m_lines[i].GetWord(0) == "b")
-                {
-                    isB = true;
-                    wordIndex = 1;
-                }
-                else if (block->m_lines[i].NumWords() > 2 && block->m_lines[i].GetWord(0).starts_with("cb"))
-                {
-                    wordIndex = 2;
-                }
-                else
+                if (!block->m_lines[i].IsDirectUnconditionalJumpInst() && !block->m_lines[i].IsConditionalJumpInst())
                 {
                     continue;
                 }
 
-                std::string label = block->m_lines[i].GetWord(wordIndex);
+                std::string label = block->m_lines[i].GetLabel();
 
                 // This is the ic miss dest we want it do be contained in the b.ne instruction and not a veneer
                 //
@@ -251,9 +231,9 @@ std::vector<DeegenStencilExtractedICAsm> WARN_UNUSED RunStencilInlineCacheLogicE
                     file->m_blockHolders.push_back(std::move(veneer));
                 }
 
-                block->m_lines[i].GetWord(wordIndex) = label;
+                block->m_lines[i].GetLabel() = label;
 
-                if (isB)
+                if (block->m_lines[i].IsDirectUnconditionalJumpInst())
                 {
                     block->m_terminalJmpTargetLabel = label;
                     block->m_endsWithJmpToLocalLabel = true;

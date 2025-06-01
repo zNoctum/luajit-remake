@@ -160,6 +160,17 @@ struct X64AsmLine
         }
     }
 
+    bool WARN_UNUSED IsFakeJumpInst()
+    {
+        if (!IsInstruction()) { return false; }
+        return GetWord(0) == "b.nv";
+    }
+
+    static X64AsmLine WARN_UNUSED CreateFakeJumpInst(std::string label)
+    {
+        return Parse("\tb.nv\t" + label);
+    }
+
     bool WARN_UNUSED IsDefinitelyBarrierInst()
     {
         if (!IsInstruction()) { return false; }
