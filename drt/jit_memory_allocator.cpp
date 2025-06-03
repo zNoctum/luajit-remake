@@ -7,7 +7,6 @@ void JitMemoryLargeAllocationHeader::Destroy()
     next->prev = prev;
     prev->next = next;
     assert(reinterpret_cast<uint64_t>(this) % x_pageSize == 0);
-    do_munmap(this, GetSize());
 }
 
 JitMemoryPageHeader* WARN_UNUSED JitMemoryAllocator::AllocateUninitalizedPage()
@@ -15,13 +14,7 @@ JitMemoryPageHeader* WARN_UNUSED JitMemoryAllocator::AllocateUninitalizedPage()
     constexpr size_t x_pageSize = JitMemoryPageHeaderBase::x_pageSize;
     if (unlikely(m_reservedRangeCur == m_reservedRangeEnd))
     {
-        ReleaseAssert(false && "We can't allocate more JIT memory because this breaks our expectation that every piece of jit code can jump to any other with a relative address diffrence of <8GiB");
-        // void* reservedRange = do_mmap_with_custom_alignment(x_pageSize /*alignment*/, x_reserveRangeSize, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE);
-        // m_reservedRangeCur = reinterpret_cast<uint64_t>(reservedRange);
-        // assert(m_reservedRangeCur % x_pageSize == 0);
-        // m_reservedRangeEnd = m_reservedRangeCur + x_reserveRangeSize;
-
-        // m_unmapList.push_back(reservedRange);
+        ReleaseAssert(false && "We can't allocate more JIT memory because this breaks our expectation that every piece of jit code can jump to any other with a relative address diffrence of <4GiB");
     }
 
     assert(m_reservedRangeCur + x_pageSize <= m_reservedRangeEnd);
@@ -45,13 +38,7 @@ void* WARN_UNUSED JitMemoryAllocator::DoLargeAllocation(size_t size)
 
     if (unlikely(m_reservedRangeCur + size >= m_reservedRangeEnd))
     {
-        ReleaseAssert(false && "We can't allocate more JIT memory because this breaks our expectation that every piece of jit code can jump to any other with a relative address diffrence of <8GiB");
-        // void* reservedRange = do_mmap_with_custom_alignment(x_pageSize /*alignment*/, x_reserveRangeSize, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE);
-        // m_reservedRangeCur = reinterpret_cast<uint64_t>(reservedRange);
-        // assert(m_reservedRangeCur % x_pageSize == 0);
-        // m_reservedRangeEnd = m_reservedRangeCur + x_reserveRangeSize;
-
-        // m_unmapList.push_back(reservedRange);
+        ReleaseAssert(false && "We can't allocate more JIT memory because this breaks our expectation that every piece of jit code can jump to any other with a relative address diffrence of <4GiB");
     }
 
     assert(m_reservedRangeCur + x_pageSize <= m_reservedRangeEnd);
@@ -63,6 +50,7 @@ void* WARN_UNUSED JitMemoryAllocator::DoLargeAllocation(size_t size)
     VM_FAIL_WITH_ERRNO_IF(r == MAP_FAILED, "Failed to allocate JIT memory of size %llu", static_cast<unsigned long long>(x_pageSize));
     assert(addr == r);
 
+    m_totalUsedMemory += size;
     m_totalOsMemoryUsage += size;
 
     JitMemoryLargeAllocationHeader* hdr = reinterpret_cast<JitMemoryLargeAllocationHeader*>(addr);
@@ -84,7 +72,11 @@ void JitMemoryAllocator::Shutdown()
     assert(m_laAnchor.prev == &m_laAnchor);
     assert(m_laAnchor.next == &m_laAnchor);
 
-    m_totalOsMemoryUsage += m_reservedRangeEnd - m_reservedRangeCur;
+    do_munmap(reinterpret_cast<void*>(m_reservedRangeEnd - x_reserveRangeSize), x_reserveRangeSize);
+
+    // This is guaranteed by the munmap above but still a bit ugly
+    //
+    m_totalOsMemoryUsage = 0;
 
     // assert(m_totalOsMemoryUsage == 0);
 }

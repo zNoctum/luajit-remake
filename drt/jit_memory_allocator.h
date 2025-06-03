@@ -402,9 +402,9 @@ public:
         if (unlikely(hb->IsLargeAllocation()))
         {
             JitMemoryLargeAllocationHeader* hdr = hb->AsLAHeader();
-            // assert(m_totalUsedMemory >= hdr->GetSize());
+            assert(m_totalUsedMemory >= hdr->GetSize());
             m_totalUsedMemory -= hdr->GetSize();
-            // assert(m_totalOsMemoryUsage >= hdr->GetSize());
+            assert(m_totalOsMemoryUsage >= hdr->GetSize());
             m_totalOsMemoryUsage -= hdr->GetSize();
             hdr->Destroy();
         }
@@ -483,7 +483,7 @@ private:
     // but to make things better, we reserve (not allocate) x_reserveRangeSize memory range from OS once,
     // then use MAP_FIXED to turn them into usable memory as needed
     //
-    static constexpr size_t x_reserveRangeSize = 8 * 1024 * 1024;
+    static constexpr size_t x_reserveRangeSize = 4ULL * 1024 * 1024 * 1024;
     static_assert(x_reserveRangeSize % JitMemoryPageHeaderBase::x_pageSize == 0);
 
     uint64_t m_reservedRangeCur;
