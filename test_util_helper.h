@@ -23,6 +23,7 @@
 
 #include "common_utils.h"
 #include "gtest/gtest.h"
+#include "drt/platform.h"
 
 // Whether we are in update-expected-output mode
 //
@@ -49,6 +50,7 @@ inline std::string GetExpectedOutputFileName(const std::string& suffix)
     const char* namePart1 = ::testing::UnitTest::GetInstance()->current_test_info()->test_case_name();
     const char* namePart2 = ::testing::UnitTest::GetInstance()->current_test_info()->name();
     return std::string(x_expected_output_dir) + std::string("/") +
+           (x_targetX64 ? "x64/" : "arm64/" ) +
            std::string(namePart1) + std::string(".") + std::string(namePart2) +
            (suffix == "" ? "" : std::string(".") + suffix) + ".expected";
 }

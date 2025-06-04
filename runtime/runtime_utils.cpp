@@ -8,6 +8,7 @@
 #include "json_utils.h"
 #include "bytecode_builder.h"
 #include "drt/baseline_jit_codegen_helper.h"
+#include "drt/platform.h"
 
 const size_t x_num_bytecode_metadata_struct_kinds_ = x_num_bytecode_metadata_struct_kinds;
 
@@ -235,7 +236,7 @@ CoroutineRuntimeContext* CoroutineRuntimeContext::Create(VM* vm, UserHeapPointer
     r->m_variadicRetSlotBegin = 0;
     r->m_upvalueList.m_value = 0;
     size_t bytesToAllocate = numStackSlots * sizeof(TValue);
-    bytesToAllocate = RoundUpToMultipleOf<VM::x_pageSize>(bytesToAllocate);
+    bytesToAllocate = RoundUpToMultipleOf<x_targetPageSize>(bytesToAllocate);
     void* stackAreaWithOverflowProtection = mmap(nullptr, bytesToAllocate + x_stackOverflowProtectionAreaSize * 2,
                                                  PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
     VM_FAIL_WITH_ERRNO_IF(stackAreaWithOverflowProtection == MAP_FAILED,

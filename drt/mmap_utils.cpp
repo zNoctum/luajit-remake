@@ -1,6 +1,7 @@
 #include "mmap_utils.h"
 #include "misc_math_helper.h"
 #include "constexpr_power_helper.h"
+#include "drt/platform.h"
 
 void do_munmap(void* ptr, size_t size)
 {
@@ -19,9 +20,9 @@ static size_t WARN_UNUSED RoundUpToPowerOfTwoAlignment(size_t value, size_t alig
 void* WARN_UNUSED do_mmap_with_custom_alignment(size_t alignment, size_t length, int prot_flags, int map_flags)
 {
     assert(is_power_of_2(alignment));
-    assert(alignment >= 16384);   // no reason to use this function if alignment is smaller than default alignment of mmap
+    assert(alignment >= x_targetPageSize);   // no reason to use this function if alignment is smaller than default alignment of mmap
 
-    length = RoundUpToMultipleOf<16384>(length);
+    length = RoundUpToMultipleOf<x_targetPageSize>(length);
 
     size_t mmapLength = length + alignment;
     void* ptrVoid = mmap(nullptr, mmapLength, prot_flags, map_flags, -1, 0);

@@ -1,5 +1,6 @@
 #include "invoke_clang_helper.h"
 #include "read_file.h"
+#include "drt/platform.h"
 
 namespace dast {
 
@@ -37,7 +38,7 @@ static bool WARN_UNUSED IsFileExists(const char* filename)
     return (stat(filename, &buf) == 0);
 }
 
-std::string WARN_UNUSED CompileAssemblyFileToObjectFile(const std::string& asmFileContents, const std::string& extraCmdlineArgs, const Arch arch)
+std::string WARN_UNUSED CompileAssemblyFileToObjectFile(const std::string& asmFileContents, const std::string& extraCmdlineArgs)
 {
     FILE* fp = nullptr;
     std::string fileBodyName;
@@ -58,20 +59,8 @@ std::string WARN_UNUSED CompileAssemblyFileToObjectFile(const std::string& asmFi
 
     ReleaseAssert(!IsFileExists(objFilePath.c_str()));
 
-    std::string arch_str;
-    switch (arch)
-    {
-    case Arch::X86:
-        arch_str = std::string("x86_64-unknown-linux-gnu ");
-        break;
-    case Arch::AArch64:
-        arch_str = std::string("aarch64-unknown-linux-gnu ");
-        break;
-    }
-
     std::string cmd =
-        std::string("clang -O3 -Weverything -Werror -target ")
-        + arch_str
+        std::string("clang -O3 -Weverything -Werror ")
         + extraCmdlineArgs
         + " -o " + objFilePath
         + " -c "
@@ -97,7 +86,7 @@ std::string WARN_UNUSED CompileAssemblyFileToObjectFile(const std::string& asmFi
     return output;
 }
 
-static std::string WARN_UNUSED CompileCppFileToObjectFileOrLLVMBitcodeImpl(const std::string& cppFileContents, bool compileToLLVMIR, const std::string& storePath, const Arch arch)
+static std::string WARN_UNUSED CompileCppFileToObjectFileOrLLVMBitcodeImpl(const std::string& cppFileContents, bool compileToLLVMIR, const std::string& storePath)
 {
     FILE* fp = nullptr;
     std::string cppFilePath, resFilePath;
@@ -148,8 +137,7 @@ static std::string WARN_UNUSED CompileCppFileToObjectFileOrLLVMBitcodeImpl(const
         " -Wno-missing-prototypes -Wno-zero-length-array -Wno-reserved-identifier -Wno-disabled-macro-expansion "
         " -Wno-gnu-zero-variadic-macro-arguments -Wno-packed -Wno-overlength-strings -Wno-switch-enum -Werror "
         " -c -std=c++20 ")
-        + (arch == Arch::X86 ? "-target x86_64-unknown-linux-gnu -mbmi -msse4 " : "")
-        + (arch == Arch::AArch64 ? "-target aarch64-unknown-linux-gnu " : "")
+        + (x_targetX64 ? " -mbmi -msse4 " : "")
         + (compileToLLVMIR ? " -emit-llvm " : "")
         + " -o " + resFilePath + " "
         + cppFilePath;
@@ -177,14 +165,14 @@ static std::string WARN_UNUSED CompileCppFileToObjectFileOrLLVMBitcodeImpl(const
     return output;
 }
 
-std::string WARN_UNUSED CompileCppFileToObjectFile(const std::string& cppFileContents, const std::string& storePath, const Arch arch)
+std::string WARN_UNUSED CompileCppFileToObjectFile(const std::string& cppFileContents, const std::string& storePath)
 {
-    return CompileCppFileToObjectFileOrLLVMBitcodeImpl(cppFileContents, false /*compileToLLVMIR*/, storePath, arch);
+    return CompileCppFileToObjectFileOrLLVMBitcodeImpl(cppFileContents, false /*compileToLLVMIR*/, storePath);
 }
 
-std::string WARN_UNUSED CompileCppFileToLLVMBitcode(const std::string& cppFileContents, const std::string& storePath, const Arch arch)
+std::string WARN_UNUSED CompileCppFileToLLVMBitcode(const std::string& cppFileContents, const std::string& storePath)
 {
-    return CompileCppFileToObjectFileOrLLVMBitcodeImpl(cppFileContents, true /*compileToLLVMIR*/, storePath, arch);
+    return CompileCppFileToObjectFileOrLLVMBitcodeImpl(cppFileContents, true /*compileToLLVMIR*/, storePath);
 }
 
 }   // namespace dast

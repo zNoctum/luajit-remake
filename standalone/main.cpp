@@ -1,6 +1,5 @@
 #include "runtime_utils.h"
 #include "lj_parser_wrapper.h"
-#include "vm.h"
 
 #define LJR_VERSION_MAJOR_NUMBER 0
 #define LJR_VERSION_MINOR_NUMBER 0

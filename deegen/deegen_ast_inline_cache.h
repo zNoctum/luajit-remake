@@ -202,10 +202,10 @@ public:
         size_t m_smcRegionOffset;
         size_t m_smcRegionLength;
 
-        // If the inline slab is already used, the patchable jump ends at fastpathAddr + m_inlineSlabPatchableJumpEndOffsetInFastPath
-        // Otherwise, the patchable jump ends at fastpathAddr + m_smcRegionOffset + 4
+        // If the inline slab is already used, the patchable jump starts at fastpathAddr + m_inlineSlabPatchableJumpEndOffsetInFastPath
+        // Otherwise, the patchable jump starts at fastpathAddr + m_smcRegionOffset
         //
-        size_t m_inlineSlabPatchableJumpEndOffsetInFastPath;
+        size_t m_inlineSlabPatchableJumpOffsetInFastPath;
 
         // The offset of the IC miss logic in the slow path
         //

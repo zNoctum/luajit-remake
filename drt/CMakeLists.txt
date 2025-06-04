@@ -1,6 +1,5 @@
-add_library(deegen_rt 
+SET(DEEGEN_RT_SRC
 	bytecode_builder.cpp
-	deegen_internal_enter_exit_vm.s
 	baseline_jit_codegen_helper.cpp
 	jit_memory_allocator.cpp
 	mmap_utils.cpp
@@ -20,9 +19,16 @@ add_library(deegen_rt
 	memory_ptr.cpp
 )
 
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64")
+	list(APPEND DEEGEN_RT_SRC deegen_internal_enter_exit_vm_x64.s)
+else()
+	list(APPEND DEEGEN_RT_SRC deegen_internal_enter_exit_vm_arm64.s)
+endif()
+
+add_library(deegen_rt ${DEEGEN_RT_SRC})
+
 add_dependencies(deegen_rt 
   deegen_fps_lib
 )
 set_target_properties(deegen_rt PROPERTIES COMPILE_FLAGS " -DDEEGEN_POST_FUTAMURA_PROJECTION ")
-#set_target_properties(deegen_rt PROPERTIES COMPILE_FLAGS " -DDEEGEN_POST_FUTAMURA_PROJECTION -fsanitize=address ")
 

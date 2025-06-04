@@ -4,6 +4,7 @@
 #include "tvalue.h"
 #include "array_type.h"
 #include "jit_memory_allocator.h"
+#include "drt/platform.h"
 
 enum ThreadKind : uint8_t
 {
@@ -916,8 +917,6 @@ public:
 
     uint32_t GetNumTotalBaselineJitCompilations() { return m_totalBaselineJitCompilations; }
     void IncrementNumTotalBaselineJitCompilations() { m_totalBaselineJitCompilations++; }
-
-    static constexpr size_t x_pageSize = 16384;
 
 private:
     static constexpr size_t x_vmLayoutLength = 18ULL << 30;

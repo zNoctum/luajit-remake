@@ -3,6 +3,7 @@
 #include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/InlineAsm.h"
 #include "deegen_magic_asm_helper.h"
+#include "drt/platform.h"
 
 namespace dast {
 
@@ -163,7 +164,7 @@ X64AsmLine WARN_UNUSED X64AsmLine::Parse(std::string line)
     }
 
     {
-        size_t commentStart = line.find("//");
+        size_t commentStart = line.find(x_asmCommentStart);
         if (commentStart != std::string::npos)
         {
             res.m_trailingComments = line.substr(commentStart);
@@ -174,26 +175,26 @@ X64AsmLine WARN_UNUSED X64AsmLine::Parse(std::string line)
         // special comments that might break the preprocessor if used incorrectly, but harmless if simply removed
         // See: https://stackoverflow.com/questions/53959565/what-does-app-in-the-assembly-file-generated-by-compiler-mean
         //
-        if (res.m_trailingComments.starts_with("//APP"))
+        if (res.m_trailingComments.starts_with(x_asmCommentStart + "APP"))
         {
-            if (res.m_trailingComments == "//APP")
+            if (res.m_trailingComments == x_asmCommentStart + "APP")
             {
                 res.m_trailingComments = "";
             }
             else
             {
-                res.m_trailingComments = "// <removed_sharp_app_comment>" + res.m_trailingComments.substr(strlen("//APP"));
+                res.m_trailingComments = x_asmCommentStart + " <removed_sharp_app_comment>" + res.m_trailingComments.substr((x_asmCommentStart + "APP").length());
             }
         }
-        else if (res.m_trailingComments.starts_with("//NO_APP"))
+        else if (res.m_trailingComments.starts_with(x_asmCommentStart + "NO_APP"))
         {
-            if (res.m_trailingComments == "//NO_APP")
+            if (res.m_trailingComments == x_asmCommentStart + "NO_APP")
             {
                 res.m_trailingComments = "";
             }
             else
             {
-                res.m_trailingComments = "// <removed_sharp_no_app_comment>" + res.m_trailingComments.substr(strlen("//NO_APP"));
+                res.m_trailingComments = x_asmCommentStart + " <removed_sharp_no_app_comment>" + res.m_trailingComments.substr((x_asmCommentStart + "NO_APP").length());
             }
         }
     }
@@ -244,7 +245,7 @@ void X64AsmBlock::SplitAtLine(X64AsmFile* owner, size_t line, X64AsmBlock*& part
     {
         p1->m_lines.push_back(m_lines[i]);
     }
-    p1->m_lines.push_back(X64AsmLine::Parse("\tb\t" + p1->m_terminalJmpTargetLabel));
+    p1->m_lines.push_back(X64AsmLine::Create(p1->m_terminalJmpTargetLabel));
 
     std::unique_ptr<X64AsmBlock> p2 = std::make_unique<X64AsmBlock>();
     p2->m_prefixText = uniqLabel + ":\n";
@@ -372,7 +373,7 @@ std::unique_ptr<X64AsmFile> WARN_UNUSED X64AsmFile::ParseFile(std::string fileCo
             ReleaseAssert(line.NumWords() > 0);
             if (line.GetWord(0) == ".p2align")
             {
-                line = X64AsmLine::Parse("#" + lines[i]);
+                line = X64AsmLine::Parse(x_asmCommentStart + lines[i]);
                 ReleaseAssert(line.IsCommentOrEmptyLine());
             }
         }
@@ -524,7 +525,7 @@ std::unique_ptr<X64AsmFile> WARN_UNUSED X64AsmFile::ParseFile(std::string fileCo
                 std::string targetLabel = r->m_blocks[i + 1]->m_normalizedLabelName;
                 block->m_endsWithJmpToLocalLabel = true;
                 block->m_terminalJmpTargetLabel = targetLabel;
-                block->m_lines.push_back(X64AsmLine::Parse("\tb\t" + targetLabel));
+                block->m_lines.push_back(X64AsmLine::Create(targetLabel));
             }
             else
             {
@@ -668,8 +669,8 @@ std::unique_ptr<X64AsmFile> WARN_UNUSED X64AsmFile::ParseFile(std::string fileCo
             {
                 ReleaseAssert(asmLine.IsInstruction());
                 if (asmLine.NumWords() != 2) { return false; }
-                if (asmLine.GetWord(0) != "hlt") { return false; }
-                ReleaseAssert(asmLine.GetWord(1).starts_with("#"));
+                if (asmLine.GetWord(0) != (x_targetX64 ? "int" : "hlt")) { return false; }
+                ReleaseAssert(asmLine.GetWord(1).starts_with(x_targetX64 ? "$" : "#"));
                 return true;
             };
 
@@ -703,12 +704,12 @@ std::unique_ptr<X64AsmFile> WARN_UNUSED X64AsmFile::ParseFile(std::string fileCo
                 else
                 {
                     ReleaseAssert(i + 1 < block->m_lines.size());
-                    uint32_t intInstOpval = getIntInstOpVal(block->m_lines[i]);
+                    uint32_t intInstOpval = getIntInstOpVal(block->m_lines[i + (x_targetX64 ? 1 : 0)]);
                     AsmMagicPayload* payload = new AsmMagicPayload();
                     ReleaseAssert(100 <= intInstOpval && intInstOpval < 100 + static_cast<uint32_t>(MagicAsmKind::X_END_OF_ENUM));
                     payload->m_kind = static_cast<MagicAsmKind>(intInstOpval - 100);
 
-                    size_t payloadEnd = i + 1;
+                    size_t payloadEnd = i + (x_targetX64 ? 2 : 1);
                     while (true)
                     {
                         ReleaseAssert(payloadEnd < block->m_lines.size());
@@ -722,7 +723,7 @@ std::unique_ptr<X64AsmFile> WARN_UNUSED X64AsmFile::ParseFile(std::string fileCo
 
                     // [i+1, payloadEnd) is the range of the asm payload
                     //
-                    for (size_t k = i + 1; k < payloadEnd; k++)
+                    for (size_t k = i + (x_targetX64 ? 2 : 1); k < payloadEnd; k++)
                     {
                         payload->m_lines.push_back(block->m_lines[k]);
                     }
@@ -734,7 +735,7 @@ std::unique_ptr<X64AsmFile> WARN_UNUSED X64AsmFile::ParseFile(std::string fileCo
                     ReleaseAssert(list.back().m_magicPayload == nullptr);
                     list.back().m_magicPayload = payload;
 
-                    i = payloadEnd + 1;
+                    i = payloadEnd + (x_targetX64 ? 2 : 1);
                 }
             }
             ReleaseAssert(i == block->m_lines.size());
@@ -906,7 +907,7 @@ X64AsmBlock* WARN_UNUSED X64AsmBlock::Create(X64AsmFile* owner, X64AsmBlock* jmp
     res->m_prefixText = res->m_normalizedLabelName + ":\n";
     res->m_endsWithJmpToLocalLabel = true;
     res->m_terminalJmpTargetLabel = jmpDst->m_normalizedLabelName;
-    res->m_lines.push_back(X64AsmLine::Parse("\tb\t" + jmpDst->m_normalizedLabelName));
+    res->m_lines.push_back(X64AsmLine::Create(jmpDst->m_normalizedLabelName));
     owner->m_blockHolders.push_back(std::move(holder));
     return res;
 }

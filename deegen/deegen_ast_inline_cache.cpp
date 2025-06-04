@@ -10,6 +10,7 @@
 #include "drt/baseline_jit_codegen_helper.h"
 #include "invoke_clang_helper.h"
 #include "llvm/Linker/Linker.h"
+#include "drt/platform.h"
 
 namespace dast {
 
@@ -2560,7 +2561,7 @@ AstInlineCache::BaselineJitLLVMLoweringResult WARN_UNUSED AstInlineCache::DoLowe
             //
             {
                 size_t icEffectGlobalOrd = globalIcEffectTraitBaseOrd + e.m_effectStartOrdinal + i;
-                std::string asmString = "mov x0, #" + std::to_string(icEffectGlobalOrd) + ";";
+                std::string asmString = x_targetX64 ? "movl $$" + std::to_string(icEffectGlobalOrd) + ", eax;" : "mov x0, #" + std::to_string(icEffectGlobalOrd) + ";";
                 asmString = MagicAsm::WrapLLVMAsmPayload(asmString, MagicAsmKind::DummyAsmToPreventIcEntryBBMerge);
                 FunctionType* fty = FunctionType::get(llvm_type_of<void>(ctx), { }, false);
                 InlineAsm* ia = InlineAsm::get(fty, asmString, "" /*constraints*/, true /*hasSideEffects*/);
@@ -2753,41 +2754,87 @@ AstInlineCache::BaselineJitLLVMLoweringResult WARN_UNUSED AstInlineCache::DoLowe
 
         // The first line of the assembly conveys the IC ordinal
         //
-        std::string asmIdentStrPrefix = "mov x0, #" + std::to_string(icUsageOrdInBytecode) + ";";
+        std::string asmIdentStrPrefix = x_targetX64 ? "movl $$" + std::to_string(icUsageOrdInBytecode) + ", eax;" : "mov x0, #" + std::to_string(icUsageOrdInBytecode) + ";";
 
         // The second line means how many bytes of NOP padding the SMC region shall reserve.
         // It always starts with 0. We will compile things to ASM once to figure out how much padding we need,
         // then back-patch it at LLVM IR level, and compile it to ASM again with the right padding.
         //
-        asmIdentStrPrefix += "mov x0, #0;";
+        asmIdentStrPrefix += x_targetX64 ? "movl $$0, eax;" : "mov x0, #0;";
 
         FunctionType* iaFty = nullptr;
         InlineAsm* ia = nullptr;
-        std::string asmStr = "movz $0, #:abs_g0_nc:$2;movk $0, #:abs_g1_nc:$2;";
 
-        if (llvm_value_has_type<uint64_t>(normalizedIcKey))
+        if (x_targetX64 && llvm_value_has_type<uint32_t>(normalizedIcKey))
         {
-            asmStr += "movk $0, #:abs_g1_nc:$2; movk $0, #:abs_g0_nc:$2;";
-        }
+            std::string asmStr = "cmpl $1, $0;";
+            for (size_t i = 0; i < effectImplBBs.size(); i++)
+            {
+                asmStr += "jne ${" + std::to_string(i + 2) + ":l};";
+            }
 
-        asmStr += "cmp $0, $1;";
-        for (size_t i = 0; i < effectImplBBs.size(); i++)
+            std::string constraintStr = "r,i,";
+            for (size_t i = 0; i < effectImplBBs.size(); i++)
+            {
+                constraintStr += "!i,";
+            }
+            constraintStr += "~{cc},~{dirflag},~{fpsr},~{flags}";
+
+            asmStr = asmIdentStrPrefix + asmStr;
+            asmStr = MagicAsm::WrapLLVMAsmPayload(asmStr, MagicAsmKind::GenericIcEntry);
+
+            iaFty = FunctionType::get(llvm_type_of<void>(ctx), { llvm_type_of<uint32_t>(ctx), llvm_type_of<void*>(ctx) }, false);
+            ia = InlineAsm::get(iaFty, asmStr, constraintStr, true /*hasSideEffects*/);
+        }
+        else if (x_targetX64)
         {
-            asmStr += "bne ${" + std::to_string(i + 3) + ":l};";
-        }
+            std::string asmStr = "movabsq $2, $0;cmpq $0, $1;";
+            for (size_t i = 0; i < effectImplBBs.size(); i++)
+            {
+                asmStr += "jne ${" + std::to_string(i + 3) + ":l};";
+            }
 
-        std::string constraintStr = "=&r,r,i,";
-        for (size_t i = 0; i < effectImplBBs.size(); i++)
+            std::string constraintStr = "=&r,r,i,";
+            for (size_t i = 0; i < effectImplBBs.size(); i++)
+            {
+                constraintStr += "!i,";
+            }
+            constraintStr += "~{cc},~{dirflag},~{fpsr},~{flags}";
+
+            asmStr = asmIdentStrPrefix + asmStr;
+            asmStr = MagicAsm::WrapLLVMAsmPayload(asmStr, MagicAsmKind::GenericIcEntry);
+
+            iaFty = FunctionType::get(llvm_type_of<uint64_t>(ctx), { llvm_type_of<uint64_t>(ctx), llvm_type_of<void*>(ctx) }, false);
+            ia = InlineAsm::get(iaFty, asmStr, constraintStr, true /*hasSideEffects*/);
+        }
+        else
         {
-            constraintStr += "!i,";
+            std::string asmStr = "movz $0, #:abs_g0_nc:$2;movk $0, #:abs_g1_nc:$2;";
+
+            if (llvm_value_has_type<uint64_t>(normalizedIcKey))
+            {
+                asmStr += "movk $0, #:abs_g1_nc:$2; movk $0, #:abs_g0_nc:$2;";
+            }
+
+            asmStr += "cmp $0, $1;";
+            for (size_t i = 0; i < effectImplBBs.size(); i++)
+            {
+                asmStr += "bne ${" + std::to_string(i + 3) + ":l};";
+            }
+
+            std::string constraintStr = "=&r,r,i,";
+            for (size_t i = 0; i < effectImplBBs.size(); i++)
+            {
+                constraintStr += "!i,";
+            }
+            constraintStr += "~{cc},~{dirflag},~{fpsr},~{flags}";
+
+            asmStr = asmIdentStrPrefix + asmStr;
+            asmStr = MagicAsm::WrapLLVMAsmPayload(asmStr, MagicAsmKind::GenericIcEntry);
+
+            iaFty = FunctionType::get(llvm_type_of<uint64_t>(ctx), { llvm_type_of<uint64_t>(ctx), llvm_type_of<void*>(ctx) }, false);
+            ia = InlineAsm::get(iaFty, asmStr, constraintStr, true /*hasSideEffects*/);
         }
-        constraintStr += "~{cc},~{dirflag},~{fpsr},~{flags}";
-
-        asmStr = asmIdentStrPrefix + asmStr;
-        asmStr = MagicAsm::WrapLLVMAsmPayload(asmStr, MagicAsmKind::GenericIcEntry);
-
-        iaFty = FunctionType::get(llvm_type_of<uint64_t>(ctx), { llvm_type_of<uint64_t>(ctx), llvm_type_of<void*>(ctx) }, false);
-        ia = InlineAsm::get(iaFty, asmStr, constraintStr, true /*hasSideEffects*/);
         ReleaseAssert(iaFty != nullptr && ia != nullptr);
 
         GlobalVariable* cpSym = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(module, CP_PLACEHOLDER_GENERIC_IC_KEY, /*lower*/ -1, /*upper*/ -1);
@@ -3088,10 +3135,21 @@ std::vector<AstInlineCache::BaselineJitAsmTransformResult> WARN_UNUSED AstInline
         //
         auto getOperandValFromMagicPayloadLine = [&](X64AsmLine& line) WARN_UNUSED -> uint64_t
         {
-            ReleaseAssert(line.NumWords() == 3 && line.GetWord(0).starts_with("mov") && line.GetWord(1).starts_with("x"));
-            std::string s = line.GetWord(2);
-            ReleaseAssert(s.starts_with("#"));
-            int val = StoiOrFail(s.substr(1, s.length() - 1));
+            int val;
+            if (x_targetX64)
+            {
+                ReleaseAssert(line.NumWords() == 3 && line.GetWord(0) == "movl" && line.GetWord(2) == "eax");
+                std::string s = line.GetWord(1);
+                ReleaseAssert(s.starts_with("$") && s.ends_with(","));
+                val = StoiOrFail(s.substr(1, s.length() - 2));
+            }
+            else
+            {
+                ReleaseAssert(line.NumWords() == 3 && line.GetWord(0).starts_with("mov") && line.GetWord(1).starts_with("x"));
+                std::string s = line.GetWord(2);
+                ReleaseAssert(s.starts_with("#"));
+                val = StoiOrFail(s.substr(1, s.length() - 1));
+            }
             ReleaseAssert(val >= 0);
             return static_cast<uint64_t>(val);
         };
@@ -3111,14 +3169,16 @@ std::vector<AstInlineCache::BaselineJitAsmTransformResult> WARN_UNUSED AstInline
             checkIcHitLogic.push_back(payload->m_lines[icEffectBeginLine]);
             icEffectBeginLine++;
         }
-        ReleaseAssert(checkIcHitLogic.size() == 3 || checkIcHitLogic.size() == 5);
+        ReleaseAssertIff(x_targetX64, checkIcHitLogic.size() == 1 || checkIcHitLogic.size() == 2);
+        ReleaseAssertIff(!x_targetX64, checkIcHitLogic.size() == 3 || checkIcHitLogic.size() == 5);
 
         std::vector<std::string> effectEntryLabels;
         for (size_t i = icEffectBeginLine; i < payload->m_lines.size(); i++)
         {
             X64AsmLine& line = payload->m_lines[i];
             ReleaseAssert(line.IsConditionalJumpInst());
-            ReleaseAssert(line.NumWords() == 2 && line.GetWord(0) == "b.ne");
+            ReleaseAssertIff(x_targetX64, line.NumWords() == 2 && line.GetWord(0) == "jne");
+            ReleaseAssertIff(!x_targetX64, line.NumWords() == 2 && line.GetWord(0) == "b.ne");
             effectEntryLabels.push_back(line.GetWord(1));
         }
 
@@ -3193,8 +3253,9 @@ std::vector<AstInlineCache::BaselineJitAsmTransformResult> WARN_UNUSED AstInline
         block->m_trailingLabelLine = X64AsmLine::Parse(uniqLabel + ":");
         ReleaseAssert(block->m_trailingLabelLine.IsLocalLabel());
 
-        ReleaseAssert(block->m_lines.back().GetWord(0) == "b");
+        if (!x_targetX64)
         {
+            ReleaseAssert(block->m_lines.back().GetWord(0) == "b");
             std::string label = block->m_lines.back().GetWord(1);
             block->m_lines.pop_back();
             block->m_lines.push_back(X64AsmLine::Parse("\tadrp\tx16, " + label));
@@ -3226,7 +3287,14 @@ std::vector<AstInlineCache::BaselineJitAsmTransformResult> WARN_UNUSED AstInline
             block->m_trailingLabelLine.m_prefixingText = nopString;
         }
 
-        checkIcHitLogic.push_back(X64AsmLine::Parse("\tb.ne\t__deegen_cp_placeholder_" + std::to_string(CP_PLACEHOLDER_IC_MISS_DEST)));
+        if (x_targetX64)
+        {
+            checkIcHitLogic.push_back(X64AsmLine::Parse("\tjne\t__deegen_cp_placeholder_" + std::to_string(CP_PLACEHOLDER_IC_MISS_DEST)));
+        }
+        else
+        {
+            checkIcHitLogic.push_back(X64AsmLine::Parse("\tb.ne\t__deegen_cp_placeholder_" + std::to_string(CP_PLACEHOLDER_IC_MISS_DEST)));
+        }
 
         // Figure out all the IC effect entry blocks
         // Must deduplicate, as it is possible that multiple IC effects have identical code and thus gets identical label
@@ -3474,7 +3542,14 @@ AstInlineCache::BaselineJitCodegenResult WARN_UNUSED AstInlineCache::CreateJitIc
     Value* mainLogicDataSec = slowPathDataLayout->m_jitDataSecAddr.EmitGetValueLogic(slowPathData, bb);
     headerArgsList.push_back(new PtrToIntInst(mainLogicDataSec, llvm_type_of<uint64_t>(ctx), "", bb));
 
-    ReleaseAssert(inlineSlabInfo.m_smcRegionLength >= 12);
+    if (x_targetX64)
+    {
+        ReleaseAssert(inlineSlabInfo.m_smcRegionLength >= 5);
+    }
+    else
+    {
+        ReleaseAssert(inlineSlabInfo.m_smcRegionLength >= 12);
+    }
     Value* patchableJmpAddr = nullptr;
 
     // We must special-check for 'isCodegenForInlineSlab', because we are called after 'm_isInlineSlabUsed' has been set to true
@@ -3485,14 +3560,14 @@ AstInlineCache::BaselineJitCodegenResult WARN_UNUSED AstInlineCache::CreateJitIc
         //
         ReleaseAssert(inlineSlabInfo.m_hasInlineSlab);
         patchableJmpAddr = GetElementPtrInst::CreateInBounds(llvm_type_of<uint8_t>(ctx), mainLogicFastPath,
-                                                                { CreateLLVMConstantInt<uint64_t>(ctx, inlineSlabInfo.m_smcRegionOffset) }, "", bb);
+                                                                { CreateLLVMConstantInt<uint64_t>(ctx, inlineSlabInfo.m_smcRegionOffset + (x_targetX64 ? 1 : 0)) }, "", bb);
     }
     else if (!inlineSlabInfo.m_hasInlineSlab)
     {
         // No inline slab is possible for this IC, no need to check anything. The SMC region is in the initial nop form
         //
         patchableJmpAddr = GetElementPtrInst::CreateInBounds(llvm_type_of<uint8_t>(ctx), mainLogicFastPath,
-                                                                { CreateLLVMConstantInt<uint64_t>(ctx, inlineSlabInfo.m_smcRegionOffset) }, "", bb);
+                                                                { CreateLLVMConstantInt<uint64_t>(ctx, inlineSlabInfo.m_smcRegionOffset + (x_targetX64 ? 1 : 0)) }, "", bb);
     }
     else
     {
@@ -3517,19 +3592,19 @@ AstInlineCache::BaselineJitCodegenResult WARN_UNUSED AstInlineCache::CreateJitIc
 
         ReleaseAssert(llvm_value_has_type<bool>(isInlineSlabUsed));
 
-        Value* patchableJumpEndOffset = SelectInst::Create(
+        Value* patchableJumpOffset = SelectInst::Create(
             isInlineSlabUsed,
-            CreateLLVMConstantInt<uint64_t>(ctx, inlineSlabInfo.m_inlineSlabPatchableJumpEndOffsetInFastPath),
-            CreateLLVMConstantInt<uint64_t>(ctx, inlineSlabInfo.m_smcRegionOffset + 4),
+            CreateLLVMConstantInt<uint64_t>(ctx, inlineSlabInfo.m_inlineSlabPatchableJumpOffsetInFastPath),
+            CreateLLVMConstantInt<uint64_t>(ctx, inlineSlabInfo.m_smcRegionOffset + (x_targetX64 ? 1 : 0)),
             "",
             bb);
 
         patchableJmpAddr = GetElementPtrInst::CreateInBounds(llvm_type_of<uint8_t>(ctx), mainLogicFastPath,
-                                                                { patchableJumpEndOffset }, "", bb);
+                                                                { patchableJumpOffset }, "", bb);
     }
     ReleaseAssert(patchableJmpAddr != nullptr && llvm_value_has_type<void*>(patchableJmpAddr));
 
-    Value* missDestForThisIc = X64PatchableJumpUtil::GetDest(patchableJmpAddr, bb);
+    Value* missDestForThisIc = CreateCallToDeegenCommonSnippet(module.get(), "GetJmpDest", { patchableJmpAddr }, bb);
     Value* missDestForThisIcI64 = new PtrToIntInst(missDestForThisIc, llvm_type_of<uint64_t>(ctx), "", bb);
 
     Value* condBrDest = nullptr;
@@ -3668,13 +3743,13 @@ AstInlineCache::BaselineJitCodegenResult WARN_UNUSED AstInlineCache::CreateJitIc
     std::string disasmForAudit;
     {
         disasmForAudit = DumpStencilDisassemblyForAuditPurpose(
-            stencil.m_triple, false /*isDataSection*/, cgRes.m_icPathPreFixupCode, cgRes.m_icPathRelocMarker, "// " /*linePrefix*/);
+            stencil.m_triple, false /*isDataSection*/, cgRes.m_icPathPreFixupCode, cgRes.m_icPathRelocMarker, x_asmCommentStart + " " /*linePrefix*/);
 
         if (cgRes.m_dataSecPreFixupCode.size() > 0)
         {
-            disasmForAudit += std::string("//\n// Data Section:\n");
+            disasmForAudit += std::string(x_asmCommentStart + "\n" + x_asmCommentStart + " Data Section:\n");
             disasmForAudit += DumpStencilDisassemblyForAuditPurpose(
-                stencil.m_triple, true /*isDataSection*/, cgRes.m_dataSecPreFixupCode, cgRes.m_dataSecRelocMarker, "// " /*linePrefix*/);
+                stencil.m_triple, true /*isDataSection*/, cgRes.m_dataSecPreFixupCode, cgRes.m_dataSecRelocMarker, x_asmCommentStart + " " /*linePrefix*/);
         }
         disasmForAudit += "\n";
     }
@@ -3800,7 +3875,8 @@ void AstInlineCache::AttemptIrRewriteToManuallyTailDuplicateSimpleIcCases(llvm::
         // Prevent LLVM from merging the blocks at machine codegen level again
         //
         {
-            std::string asmString = "movz x0, #" + std::to_string(dummyOrd&0xFFFF) + ";movk x0, " + std::to_string((dummyOrd>>16)&0xFFFF) + ", lsl #16;";
+            std::string asmString = x_targetX64 ? "movl $$" + std::to_string(dummyOrd) + ", eax;"
+                                                : "movz x0, #" + std::to_string(dummyOrd&0xFFFF) + ";movk x0, " + std::to_string((dummyOrd>>16)&0xFFFF) + ", lsl #16;";
             dummyOrd++;
             asmString = MagicAsm::WrapLLVMAsmPayload(asmString, MagicAsmKind::DummyAsmToPreventIcEntryBBMerge);
             FunctionType* fty = FunctionType::get(llvm_type_of<void>(ci->getContext()), { }, false);
@@ -3862,7 +3938,8 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
         size_t smcRegionLen = mainStencil.RetrieveLabelDistanceComputationResult(slRes.m_symbolNameForSMCRegionLength);
         size_t icMissSlowPathOffset = mainStencil.RetrieveLabelDistanceComputationResult(slRes.m_symbolNameForIcMissLogicLabelOffset);
 
-        ReleaseAssert(smcRegionLen == 12);
+        ReleaseAssertIff(x_targetX64, smcRegionLen == 5);
+        ReleaseAssertIff(!x_targetX64, smcRegionLen == 12);
 
         // Figure out if the IC may qualify for inline slab optimization
         // For now, for simplicity, we only enable inline slab optimization if the SMC region is at the tail position,
@@ -3878,7 +3955,7 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
         }
 
         size_t ultimateInlineSlabSize = static_cast<size_t>(-1);
-        size_t inlineSlabIcMissPatchableJumpEndOffsetInFastPath = static_cast<size_t>(-1);
+        size_t inlineSlabIcMissPatchableJumpOffsetInFastPath = static_cast<size_t>(-1);
         std::map<uint64_t /*ordInLLRes*/, DeegenStencil> allInlineSlabEffects;
 
         if (shouldConsiderInlineSlabOpt)
@@ -3900,7 +3977,14 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
 
                 // Figure out if the stencil ends with a jump to the next bytecode, if yes, strip it
                 //
-                ReleaseAssert(icStencil.m_icPathCode.size() >= 4);
+                if (x_targetX64)
+                {
+                    ReleaseAssert(icStencil.m_icPathCode.size() >= 5);
+                }
+                else
+                {
+                    ReleaseAssert(icStencil.m_icPathCode.size() >= 4);
+                }
                 if (fallthroughPlaceholderOrd != static_cast<size_t>(-1))
                 {
                     bool found = false;
@@ -3935,11 +4019,20 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
                     {
                         ReleaseAssert(relocToRemove != relos.end());
                         relos.erase(relocToRemove);
-                        ReleaseAssert(code[code.size() - 4] == 0x00 /*b*/);
-                        ReleaseAssert(code[code.size() - 3] == 0x00 /*b*/);
-                        ReleaseAssert(code[code.size() - 2] == 0x00 /*b*/);
-                        ReleaseAssert(code[code.size() - 1] == 0x14 /*b*/);
-                        code.resize(code.size() - 4);
+
+                        if (x_targetX64)
+                        {
+                            ReleaseAssert(code[code.size() - 5] == 0xe9 /*jmp*/);
+                            code.resize(code.size() - 5);
+                        }
+                        else
+                        {
+                            ReleaseAssert(code[code.size() - 4] == 0x00 /*b*/);
+                            ReleaseAssert(code[code.size() - 3] == 0x00 /*b*/);
+                            ReleaseAssert(code[code.size() - 2] == 0x00 /*b*/);
+                            ReleaseAssert(code[code.size() - 1] == 0x14 /*b*/);
+                            code.resize(code.size() - 4);
+                        }
 
                         ReleaseAssert(!effectOrdsWithTailJumpRemoved.count(k));
                         effectOrdsWithTailJumpRemoved.insert(k);
@@ -3987,7 +4080,14 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
                 // The inline slab still must at least be able to accomodate a patchable jump
                 // This should be trivially true, because the IC check/branch miss logic is already longer than that
                 //
-                ReleaseAssert(inlineSlabSize >= 12);
+                if (x_targetX64)
+                {
+                    ReleaseAssert(inlineSlabSize >= 5);
+                }
+                else
+                {
+                    ReleaseAssert(inlineSlabSize >= 12);
+                }
 
                 if (inlineSlabSize > x_maxAllowedInlineSlabSize)
                 {
@@ -4030,7 +4130,14 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
 
                     // Sanity check the decision makes sense
                     //
-                    ReleaseAssert(inlineSlabSize >= 12);
+                    if (x_targetX64)
+                    {
+                        ReleaseAssert(inlineSlabSize >= 5);
+                    }
+                    else
+                    {
+                        ReleaseAssert(inlineSlabSize >= 12);
+                    }
                     ReleaseAssert(inlineSlabSize <= x_maxAllowedInlineSlabSize);
                     ReleaseAssert(allInlineSlabEffects.size() >= minEffectsToCover);
 
@@ -4075,8 +4182,10 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
                             if (rr.m_symKind == RelocationRecord::SymKind::StencilHole &&
                                 rr.m_stencilHoleOrd == CP_PLACEHOLDER_IC_MISS_DEST)
                             {
-                                ReleaseAssert(rr.m_relocationType == ELF::R_X86_64_PLT32 || rr.m_relocationType == ELF::R_X86_64_PC32 || rr.m_relocationType == ELF::R_AARCH64_CONDBR19);
-                                ReleaseAssert(rr.m_addend == -4 || rr.m_addend == 0);
+                                ReleaseAssertIff(x_targetX64, rr.m_relocationType == ELF::R_X86_64_PLT32 || rr.m_relocationType == ELF::R_X86_64_PC32);
+                                ReleaseAssertIff(!x_targetX64, rr.m_relocationType == ELF::R_AARCH64_CONDBR19);
+                                ReleaseAssertIff(x_targetX64, rr.m_addend == -4);
+                                ReleaseAssertIff(!x_targetX64, rr.m_addend == 0);
                                 ReleaseAssert(offset == static_cast<size_t>(-1));
                                 offset = rr.m_offset;
                                 ReleaseAssert(offset != static_cast<size_t>(-1));
@@ -4116,10 +4225,10 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
                     // Declare success
                     //
                     ultimateInlineSlabSize = inlineSlabSize;
-                    inlineSlabIcMissPatchableJumpEndOffsetInFastPath = smcRegionOffset + patchableJmpOperandLocInIcPath + 4;
+                    inlineSlabIcMissPatchableJumpOffsetInFastPath = smcRegionOffset + patchableJmpOperandLocInIcPath;
 
-                    ReleaseAssert(smcRegionOffset < inlineSlabIcMissPatchableJumpEndOffsetInFastPath - 4);
-                    ReleaseAssert(inlineSlabIcMissPatchableJumpEndOffsetInFastPath <= smcRegionOffset + smcRegionLen);
+                    ReleaseAssert(smcRegionOffset < inlineSlabIcMissPatchableJumpOffsetInFastPath);
+                    ReleaseAssert(inlineSlabIcMissPatchableJumpOffsetInFastPath <= smcRegionOffset + smcRegionLen);
                 }
             }
         }
@@ -4130,7 +4239,7 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
             .m_hasInlineSlab = (ultimateInlineSlabSize != static_cast<size_t>(-1)),
             .m_smcRegionOffset = smcRegionOffset,
             .m_smcRegionLength = smcRegionLen,
-            .m_inlineSlabPatchableJumpEndOffsetInFastPath = inlineSlabIcMissPatchableJumpEndOffsetInFastPath,
+            .m_inlineSlabPatchableJumpOffsetInFastPath = inlineSlabIcMissPatchableJumpOffsetInFastPath,
             .m_icMissLogicOffsetInSlowPath = icMissSlowPathOffset
         };
 
@@ -4154,7 +4263,7 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
             {
                 DeegenStencil& icStencil = allInlineSlabEffects[k];
 
-                ReleaseAssert(ultimateInlineSlabSize != static_cast<size_t>(-1) && inlineSlabIcMissPatchableJumpEndOffsetInFastPath != static_cast<size_t>(-1));
+                ReleaseAssert(ultimateInlineSlabSize != static_cast<size_t>(-1) && inlineSlabIcMissPatchableJumpOffsetInFastPath != static_cast<size_t>(-1));
 
                 // Create the implementation for isIcQualifyForInlineSlabFn
                 // It should check if the inline slab is already used, and do updates correspondingly.
@@ -4225,7 +4334,7 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
                     //
                     {
                         ReleaseAssert(icGlobalOrd >= globalIcTraitOrdBase);
-                        std::string disAsmForAuditPfx = "// IC Effect Kind #" + std::to_string(icGlobalOrd - globalIcTraitOrdBase);
+                        std::string disAsmForAuditPfx = x_asmCommentStart + " IC Effect Kind #" + std::to_string(icGlobalOrd - globalIcTraitOrdBase);
                         disAsmForAuditPfx += " (inline slab version, global ord = " + std::to_string(icGlobalOrd) + ", code len = " + std::to_string(cgRes.m_icSize) + "):\n\n";
                         inlineSlabAuditLog += disAsmForAuditPfx + cgRes.m_disasmForAudit;
                     }
@@ -4264,7 +4373,7 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
 
             size_t icGlobalOrd = llRes.m_effectPlaceholderDesc[k].m_globalOrd;
             ReleaseAssert(icGlobalOrd >= globalIcTraitOrdBase);
-            std::string disAsmForAuditPfx = "// IC Effect Kind #" + std::to_string(icGlobalOrd - globalIcTraitOrdBase);
+            std::string disAsmForAuditPfx = x_asmCommentStart + " IC Effect Kind #" + std::to_string(icGlobalOrd - globalIcTraitOrdBase);
             disAsmForAuditPfx += " (global ord = " + std::to_string(icGlobalOrd) + ", code len = " + std::to_string(cgRes.m_icSize) + "):\n\n";
             auditInfo += disAsmForAuditPfx + cgRes.m_disasmForAudit;
 
@@ -4274,13 +4383,13 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
 
         auditInfo += inlineSlabAuditLog;
 
-        auditInfo += "// SMC region offset = " + std::to_string(smcRegionOffset) + ", length = " + std::to_string(smcRegionLen) + "\n";
-        auditInfo += "// IC miss slow path offset = " + std::to_string(icMissSlowPathOffset) + "\n";
-        auditInfo += std::string("// Has Inline Slab = ") + (inlineSlabInfo.m_hasInlineSlab ? "true" : "false");
+        auditInfo += x_asmCommentStart + " SMC region offset = " + std::to_string(smcRegionOffset) + ", length = " + std::to_string(smcRegionLen) + "\n";
+        auditInfo += x_asmCommentStart + " IC miss slow path offset = " + std::to_string(icMissSlowPathOffset) + "\n";
+        auditInfo += std::string(x_asmCommentStart + " Has Inline Slab = ") + (inlineSlabInfo.m_hasInlineSlab ? "true" : "false");
         if (inlineSlabInfo.m_hasInlineSlab)
         {
-            ReleaseAssert(inlineSlabInfo.m_inlineSlabPatchableJumpEndOffsetInFastPath > inlineSlabInfo.m_smcRegionOffset);
-            auditInfo += ", Inline Slab Patchable Jump End Offset = " + std::to_string(inlineSlabInfo.m_inlineSlabPatchableJumpEndOffsetInFastPath - inlineSlabInfo.m_smcRegionOffset);
+            ReleaseAssert(inlineSlabInfo.m_inlineSlabPatchableJumpOffsetInFastPath > inlineSlabInfo.m_smcRegionOffset);
+            auditInfo += ", Inline Slab Patchable Jump Offset = " + std::to_string(inlineSlabInfo.m_inlineSlabPatchableJumpOffsetInFastPath - inlineSlabInfo.m_smcRegionOffset);
         }
         auditInfo += "\n\n";
 
@@ -4332,7 +4441,7 @@ AstInlineCache::BaselineJitFinalLoweringResult WARN_UNUSED AstInlineCache::DoLow
         {
             if (genericIcAuditInfo.size() > 1)
             {
-                finalAuditLog += "// IC Info (IC body = " + icLLRes[i].m_bodyFnName + ")\n\n";
+                finalAuditLog += x_asmCommentStart + " IC Info (IC body = " + icLLRes[i].m_bodyFnName + ")\n\n";
             }
             finalAuditLog += genericIcAuditInfo[i];
         }

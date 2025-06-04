@@ -34,7 +34,7 @@ JitMemoryPageHeader* WARN_UNUSED JitMemoryAllocator::AllocateUninitalizedPage()
 void* WARN_UNUSED JitMemoryAllocator::DoLargeAllocation(size_t size)
 {
     constexpr size_t x_pageSize = JitMemoryPageHeaderBase::x_pageSize;
-    size = RoundUpToMultipleOf<16384>(size + sizeof(JitMemoryLargeAllocationHeader));
+    size = RoundUpToMultipleOf<x_pageSize>(size + sizeof(JitMemoryLargeAllocationHeader));
 
     if (unlikely(m_reservedRangeCur + size >= m_reservedRangeEnd))
     {

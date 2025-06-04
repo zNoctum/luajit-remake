@@ -3,6 +3,7 @@
 #include "common.h"
 #include "misc_llvm_helper.h"
 #include "llvm/IR/InlineAsm.h"
+#include "drt/platform.h"
 
 namespace dast {
 
@@ -38,8 +39,18 @@ struct MagicAsm
         ReleaseAssert(static_cast<uint32_t>(magicKind) < static_cast<uint32_t>(MagicAsmKind::X_END_OF_ENUM));
         uint32_t val = 100 + static_cast<uint32_t>(magicKind);
         std::string strVal = std::to_string(val);
-        std::string prefix =  "hlt #" + strVal + ";";
-        std::string suffix = "hlt #" + strVal + ";";
+        std::string prefix, suffix;
+
+        if (x_targetX64)
+        {
+            prefix =  "hlt;int $$" + strVal + ";";
+            suffix = "int $$" + strVal + ";hlt;";
+        }
+        else
+        {
+            prefix =  "hlt #" + strVal + ";";
+            suffix = "hlt #" + strVal + ";";
+        }
         return prefix + llvmAsmStr + suffix;
     }
 
@@ -59,11 +70,15 @@ struct MagicAsm
             return false;
         }
         std::string asmStr = ia->getAsmString();
-        if (!asmStr.starts_with("hlt #"))
+        if (!x_targetX64 && !asmStr.starts_with("hlt #"))
         {
             return false;
         }
-        asmStr = asmStr.substr(strlen("hlt #"));
+        else if (x_targetX64 && !asmStr.starts_with("hlt;int $$"))
+        {
+            return false;
+        }
+        asmStr = asmStr.substr(x_targetX64 ? strlen("hlt;int $$") : strlen("hlt #"));
         size_t loc = asmStr.find(";");
         ReleaseAssert(loc != std::string::npos);
         ReleaseAssert(loc > 0);
@@ -75,7 +90,7 @@ struct MagicAsm
 
         asmStr = asmStr.substr(loc + 1);
 
-        std::string expectedSuffix = "hlt #" + magicKindStr + ";";
+        std::string expectedSuffix = x_targetX64 ? "int $$" + magicKindStr + ";hlt;" : "hlt #" + magicKindStr + ";";
         ReleaseAssert(asmStr.ends_with(expectedSuffix));
         asmStr = asmStr.substr(0, asmStr.length() - expectedSuffix.length());
         magicStr = asmStr;

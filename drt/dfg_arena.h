@@ -5,6 +5,7 @@
 #include "misc_math_helper.h"
 #include "misc_type_helper.h"
 #include "mmap_utils.h"
+#include "platform.h"
 
 namespace dfg
 {
@@ -141,7 +142,7 @@ public:
     static Arena* WARN_UNUSED Create()
     {
         void* base = do_mmap_with_custom_alignment(1ULL << 32 /*alignment*/, 1ULL << 31 /*length*/, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE);
-        size_t allocSize = RoundUpToPO2Alignment(sizeof(Arena), 16384);
+        size_t allocSize = RoundUpToPO2Alignment(sizeof(Arena), x_targetPageSize);
         void* tmp = mmap(
             base,
             allocSize,
@@ -162,7 +163,7 @@ private:
     }
 
     static constexpr size_t x_minimum_alignment = 8;
-    static constexpr size_t x_allocation_chunk_size = x_isDebugBuild ? 16384 : 131072;
+    static constexpr size_t x_allocation_chunk_size = x_isDebugBuild ? x_targetPageSize : 131072;
 
     template<size_t alignment>
     void* WARN_UNUSED ALWAYS_INLINE AllocateWithAlignment(size_t size)
@@ -200,7 +201,7 @@ private:
     void NO_INLINE __attribute__((__preserve_most__)) Grow()
     {
         assert(m_curPtr > m_boundaryPtr);
-        assert(m_boundaryPtr % 16384 == 0);
+        assert(m_boundaryPtr % x_targetPageSize == 0);
         size_t sizeToAllocate = m_curPtr - m_boundaryPtr;
         sizeToAllocate = RoundUpToPO2Alignment(sizeToAllocate, x_allocation_chunk_size);
         VM_FAIL_IF(m_boundaryPtr + sizeToAllocate > ArenaEndAddr(), "DFG arena overflowed 2GB limit!");
@@ -214,7 +215,7 @@ private:
         assert(r == reinterpret_cast<void*>(m_boundaryPtr));
         m_boundaryPtr += sizeToAllocate;
         assert(m_curPtr <= m_boundaryPtr);
-        assert(m_boundaryPtr % 16384 == 0);
+        assert(m_boundaryPtr % x_targetPageSize == 0);
     }
 
     void NO_INLINE ResetImpl(bool freeMemoryToOS)
@@ -223,7 +224,7 @@ private:
         assert(static_cast<uint32_t>(base) == 0);
         size_t oldBoundaryPtr = m_boundaryPtr;
         m_curPtr = base + RoundUpToPO2Alignment(sizeof(Arena), x_minimum_alignment);
-        m_boundaryPtr = base + RoundUpToPO2Alignment(sizeof(Arena), 16384);
+        m_boundaryPtr = base + RoundUpToPO2Alignment(sizeof(Arena), x_targetPageSize);
         assert(m_curPtr <= m_boundaryPtr);
         if (freeMemoryToOS && oldBoundaryPtr > m_boundaryPtr)
         {

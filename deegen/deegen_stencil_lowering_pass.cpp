@@ -795,183 +795,186 @@ void DeegenStencilLoweringPass::RunAsmRewritePhase(const std::string& asmFile)
     ReleaseAssert(file->m_blocks.size() > 0);
     file->m_blocks = X64AsmBlock::ReorderBlocksToMaximizeFallthroughs(file->m_blocks, 0 /*entryOrd*/);
 
-    std::unordered_map<std::string, std::string> callVeneers;
-    std::unordered_set<std::string> shouldntDelete;
-    for (size_t i = 0; i < file->m_blocks.size(); i++)
+    if (!x_targetX64)
     {
-        X64AsmBlock* block = file->m_blocks[i];
-        if (block->m_lines[0].IsDirectUnconditionalJumpInst())
-            continue;
-
-        std::string label = block->m_lines[0].GetWord(1);
-
-        if (0 < i)
+        std::unordered_map<std::string, std::string> callVeneers;
+        std::unordered_set<std::string> shouldntDelete;
+        for (size_t i = 0; i < file->m_blocks.size(); i++)
         {
-            X64AsmBlock* pred = file->m_blocks[i-1];
-            if (pred->m_endsWithJmpToLocalLabel && pred->m_terminalJmpTargetLabel == block->m_normalizedLabelName)
-            {
-                shouldntDelete.insert(block->m_normalizedLabelName);
-            }
-        }
-
-        if (!label.starts_with("__deegen_cp_placeholder_"))
-            continue;
-
-        callVeneers.insert({block->m_normalizedLabelName, label});
-    }
-
-    for (X64AsmBlock* block : file->m_slowpath)
-    {
-        for (size_t i = 0; i < block->m_lines.size(); i++)
-        {
-            if (!block->m_lines[i].IsConditionalJumpInst() && !block->m_lines[i].IsDirectUnconditionalJumpInst())
-            {
+            X64AsmBlock* block = file->m_blocks[i];
+            if (block->m_lines[0].IsDirectUnconditionalJumpInst())
                 continue;
-            }
 
-            shouldntDelete.insert(block->m_lines[i].GetLabel());
-        }
-    }
+            std::string label = block->m_lines[0].GetWord(1);
 
-    for (X64AsmBlock* block : file->m_blocks)
-    {
-        for (size_t i = 0; i < block->m_lines.size(); i++)
-        {
-            if (block->m_lines[i].NumWords() > 3 && block->m_lines[i].GetWord(0).starts_with("tb"))
+            if (0 < i)
             {
-                shouldntDelete.insert(block->m_lines[i].GetWord(3));
-            }
-            else if (!block->m_lines[i].IsConditionalJumpInst() && !block->m_lines[i].IsDirectUnconditionalJumpInst())
-            {
-                continue;
-            }
-
-            std::string label = block->m_lines[i].GetLabel();
-
-            if (auto search = callVeneers.find(label); search != callVeneers.end())
-            {
-                if (block->m_lines[i].IsDirectUnconditionalJumpInst() && block->m_lines.size() - 1 == i)
+                X64AsmBlock* pred = file->m_blocks[i-1];
+                if (pred->m_endsWithJmpToLocalLabel && pred->m_terminalJmpTargetLabel == block->m_normalizedLabelName)
                 {
-                    block->m_endsWithJmpToLocalLabel = false;
+                    shouldntDelete.insert(block->m_normalizedLabelName);
                 }
-                block->m_lines[i].GetLabel() = search->second;
             }
+
+            if (!label.starts_with("__deegen_cp_placeholder_"))
+                continue;
+
+            callVeneers.insert({block->m_normalizedLabelName, label});
         }
-    }
 
-    ReleaseAssert(file->m_blocks.size() > 0);
-
-    for (size_t i = 1; i < file->m_blocks.size(); i++)
-    {
-        X64AsmBlock* block = file->m_blocks[i];
-        if (!callVeneers.count(block->m_normalizedLabelName) || shouldntDelete.count(block->m_normalizedLabelName))
-            continue;
-
-        file->m_blocks.erase(file->m_blocks.begin() + static_cast<ssize_t>(i));
-    }
-
-    std::map<std::string, std::optional<std::string /*slowPathVeneerLabel*/>> fastPathBlockLabels;
-    for (X64AsmBlock* block : file->m_blocks)
-    {
-        fastPathBlockLabels.insert(std::make_pair(block->m_normalizedLabelName, std::nullopt));
-    }
-
-    std::map<std::string, std::optional<std::string /*fastPathVeneerLabel*/>> slowPathBlockLabels;
-    for (X64AsmBlock* block : file->m_slowpath)
-    {
-        slowPathBlockLabels.insert(std::make_pair(block->m_normalizedLabelName, std::nullopt));
-    }
-
-    std::vector<X64AsmBlock*> fastPathVeneers;
-    for (X64AsmBlock* block : file->m_blocks)
-    {
-        for (size_t i = 0; i < block->m_lines.size(); i++)
+        for (X64AsmBlock* block : file->m_slowpath)
         {
-            if (block->m_lines[i].IsFakeJumpInst() || !block->m_lines[i].IsConditionalJumpInst())
-                continue;
-
-            std::string label = block->m_lines[i].GetLabel();
-
-            if (!slowPathBlockLabels.count(label))
-                continue;
-
-            auto opt = slowPathBlockLabels.find(label);
-
-            if (auto veneerLabel = opt->second)
+            for (size_t i = 0; i < block->m_lines.size(); i++)
             {
-                label = *veneerLabel;
+                if (!block->m_lines[i].IsConditionalJumpInst() && !block->m_lines[i].IsDirectUnconditionalJumpInst())
+                {
+                    continue;
+                }
+
+                shouldntDelete.insert(block->m_lines[i].GetLabel());
             }
-            else
-            {
-                std::string newVeneerLabel = file->m_labelNormalizer.GetUniqueLabel();
-                std::unique_ptr<X64AsmBlock> veneer = std::make_unique<X64AsmBlock>();
-                veneer->m_prefixText = newVeneerLabel + ":\n";
-                veneer->m_normalizedLabelName = newVeneerLabel;
-                veneer->m_endsWithJmpToLocalLabel = true;
-                veneer->m_terminalJmpTargetLabel = label;
-                veneer->m_lines.push_back(X64AsmLine::Parse("\tb\t" + label));
-
-                slowPathBlockLabels.insert_or_assign(label, std::optional<std::string>{newVeneerLabel});
-
-                label = newVeneerLabel;
-
-                fastPathVeneers.push_back(veneer.get());
-                file->m_blockHolders.push_back(std::move(veneer));
-            }
-
-            block->m_lines[i].GetLabel() = label;
         }
-    }
 
-    for (X64AsmBlock* block : fastPathVeneers)
-    {
-        file->m_blocks.push_back(block);
-    }
-
-    std::vector<X64AsmBlock*> slowPathVeneers;
-    for (X64AsmBlock* block : file->m_slowpath)
-    {
-        for (size_t i = 0; i < block->m_lines.size(); i++)
+        for (X64AsmBlock* block : file->m_blocks)
         {
-            if (block->m_lines[i].IsFakeJumpInst() || !block->m_lines[i].IsConditionalJumpInst())
-                continue;
-
-            std::string label = block->m_lines[i].GetLabel();
-
-            if (!fastPathBlockLabels.count(label))
-                continue;
-
-            auto opt = fastPathBlockLabels.find(label);
-
-            if (auto veneerLabel = opt->second)
+            for (size_t i = 0; i < block->m_lines.size(); i++)
             {
-                label = *veneerLabel;
+                if (block->m_lines[i].NumWords() > 3 && block->m_lines[i].GetWord(0).starts_with("tb"))
+                {
+                    shouldntDelete.insert(block->m_lines[i].GetWord(3));
+                }
+                else if (!block->m_lines[i].IsConditionalJumpInst() && !block->m_lines[i].IsDirectUnconditionalJumpInst())
+                {
+                    continue;
+                }
+
+                std::string label = block->m_lines[i].GetLabel();
+
+                if (auto search = callVeneers.find(label); search != callVeneers.end())
+                {
+                    if (block->m_lines[i].IsDirectUnconditionalJumpInst() && block->m_lines.size() - 1 == i)
+                    {
+                        block->m_endsWithJmpToLocalLabel = false;
+                    }
+                    block->m_lines[i].GetLabel() = search->second;
+                }
             }
-            else
-            {
-                std::string newVeneerLabel = file->m_labelNormalizer.GetUniqueLabel();
-                std::unique_ptr<X64AsmBlock> veneer = std::make_unique<X64AsmBlock>();
-                veneer->m_prefixText = newVeneerLabel + ":\n";
-                veneer->m_normalizedLabelName = newVeneerLabel;
-                veneer->m_endsWithJmpToLocalLabel = true;
-                veneer->m_terminalJmpTargetLabel = label;
-                veneer->m_lines.push_back(X64AsmLine::Parse("\tb\t" + label));
-
-                fastPathBlockLabels.insert_or_assign(label, std::optional<std::string>{newVeneerLabel});
-
-                label = newVeneerLabel;
-
-                slowPathVeneers.push_back(veneer.get());
-                file->m_blockHolders.push_back(std::move(veneer));
-            }
-
-            block->m_lines[i].GetLabel() = label;
         }
-    }
 
-    for (X64AsmBlock* block : slowPathVeneers)
-    {
-        file->m_slowpath.push_back(block);
+        ReleaseAssert(file->m_blocks.size() > 0);
+
+        for (size_t i = 1; i < file->m_blocks.size(); i++)
+        {
+            X64AsmBlock* block = file->m_blocks[i];
+            if (!callVeneers.count(block->m_normalizedLabelName) || shouldntDelete.count(block->m_normalizedLabelName))
+                continue;
+
+            file->m_blocks.erase(file->m_blocks.begin() + static_cast<ssize_t>(i));
+        }
+
+        std::map<std::string, std::optional<std::string /*slowPathVeneerLabel*/>> fastPathBlockLabels;
+        for (X64AsmBlock* block : file->m_blocks)
+        {
+            fastPathBlockLabels.insert(std::make_pair(block->m_normalizedLabelName, std::nullopt));
+        }
+
+        std::map<std::string, std::optional<std::string /*fastPathVeneerLabel*/>> slowPathBlockLabels;
+        for (X64AsmBlock* block : file->m_slowpath)
+        {
+            slowPathBlockLabels.insert(std::make_pair(block->m_normalizedLabelName, std::nullopt));
+        }
+
+        std::vector<X64AsmBlock*> fastPathVeneers;
+        for (X64AsmBlock* block : file->m_blocks)
+        {
+            for (size_t i = 0; i < block->m_lines.size(); i++)
+            {
+                if (block->m_lines[i].IsFakeJumpInst() || !block->m_lines[i].IsConditionalJumpInst())
+                    continue;
+
+                std::string label = block->m_lines[i].GetLabel();
+
+                if (!slowPathBlockLabels.count(label))
+                    continue;
+
+                auto opt = slowPathBlockLabels.find(label);
+
+                if (auto veneerLabel = opt->second)
+                {
+                    label = *veneerLabel;
+                }
+                else
+                {
+                    std::string newVeneerLabel = file->m_labelNormalizer.GetUniqueLabel();
+                    std::unique_ptr<X64AsmBlock> veneer = std::make_unique<X64AsmBlock>();
+                    veneer->m_prefixText = newVeneerLabel + ":\n";
+                    veneer->m_normalizedLabelName = newVeneerLabel;
+                    veneer->m_endsWithJmpToLocalLabel = true;
+                    veneer->m_terminalJmpTargetLabel = label;
+                    veneer->m_lines.push_back(X64AsmLine::Create(label));
+
+                    slowPathBlockLabels.insert_or_assign(label, std::optional<std::string>{newVeneerLabel});
+
+                    label = newVeneerLabel;
+
+                    fastPathVeneers.push_back(veneer.get());
+                    file->m_blockHolders.push_back(std::move(veneer));
+                }
+
+                block->m_lines[i].GetLabel() = label;
+            }
+        }
+
+        for (X64AsmBlock* block : fastPathVeneers)
+        {
+            file->m_blocks.push_back(block);
+        }
+
+        std::vector<X64AsmBlock*> slowPathVeneers;
+        for (X64AsmBlock* block : file->m_slowpath)
+        {
+            for (size_t i = 0; i < block->m_lines.size(); i++)
+            {
+                if (block->m_lines[i].IsFakeJumpInst() || !block->m_lines[i].IsConditionalJumpInst())
+                    continue;
+
+                std::string label = block->m_lines[i].GetLabel();
+
+                if (!fastPathBlockLabels.count(label))
+                    continue;
+
+                auto opt = fastPathBlockLabels.find(label);
+
+                if (auto veneerLabel = opt->second)
+                {
+                    label = *veneerLabel;
+                }
+                else
+                {
+                    std::string newVeneerLabel = file->m_labelNormalizer.GetUniqueLabel();
+                    std::unique_ptr<X64AsmBlock> veneer = std::make_unique<X64AsmBlock>();
+                    veneer->m_prefixText = newVeneerLabel + ":\n";
+                    veneer->m_normalizedLabelName = newVeneerLabel;
+                    veneer->m_endsWithJmpToLocalLabel = true;
+                    veneer->m_terminalJmpTargetLabel = label;
+                    veneer->m_lines.push_back(X64AsmLine::Parse("\tb\t" + label));
+
+                    fastPathBlockLabels.insert_or_assign(label, std::optional<std::string>{newVeneerLabel});
+
+                    label = newVeneerLabel;
+
+                    slowPathVeneers.push_back(veneer.get());
+                    file->m_blockHolders.push_back(std::move(veneer));
+                }
+
+                block->m_lines[i].GetLabel() = label;
+            }
+        }
+
+        for (X64AsmBlock* block : slowPathVeneers)
+        {
+            file->m_slowpath.push_back(block);
+        }
     }
 
     file->Validate();

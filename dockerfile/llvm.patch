@@ -457,13 +457,13 @@ index 4dd8a6cdd898..5a2c1fa5d9c4 100644
  
  def CSR_64_MostRegs : CalleeSavedRegs<(add RBX, RCX, RDX, RSI, RDI, R8, R9, R10,
 diff --git a/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp b/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp
-index f88037e95d33..63eeebd196fd 100644
+index f88037e95d33..3a62ae57c5a3 100644
 --- a/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp
 +++ b/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp
 @@ -1786,6 +1786,14 @@ bool X86DAGToDAGISel::matchWrapper(SDValue N, X86ISelAddressMode &AM) {
      return true;
    }
- 
+
 +  if (Subtarget->is64Bit() && AM.GV && AM.GV->isAbsoluteSymbolRef()) {
 +  Optional<ConstantRange> CR = AM.GV->getAbsoluteSymbolRange();
 +    if (CR.getValue().getMinSignedBits() > 32) {
@@ -474,16 +474,7 @@ index f88037e95d33..63eeebd196fd 100644
 +
    if (IsRIPRel)
      AM.setBaseReg(CurDAG->getRegister(X86::RIP, MVT::i64));
- 
-@@ -2693,7 +2701,7 @@ bool X86DAGToDAGISel::selectMOV64Imm32(SDValue N, SDValue &Imm) {
-   if (!CR)
-     return TM.getCodeModel() == CodeModel::Small;
- 
--  return CR->getUnsignedMax().ult(1ull << 32);
-+  return CR->getMinSignedBits() <= 32;
- }
- 
- bool X86DAGToDAGISel::selectLEA64_32Addr(SDValue N, SDValue &Base,
+
 diff --git a/llvm/lib/Target/X86/X86InstrInfo.cpp b/llvm/lib/Target/X86/X86InstrInfo.cpp
 index 74ef831e1658..613faece6a97 100644
 --- a/llvm/lib/Target/X86/X86InstrInfo.cpp

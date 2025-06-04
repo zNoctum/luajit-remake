@@ -493,8 +493,7 @@ end:
 
             ReleaseAssert(rcList.count(rc));
             uint64_t ord = rcList[rc].ord;
-
-            GlobalVariable* gv = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(module, ord, rc->m_range.getLower().getSExtValue(), rc->m_range.getUpper().getSExtValue()+1);
+            GlobalVariable* gv = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(module, ord, rc->m_range.getLower().getSExtValue(), rc->m_range.getUpper().getSExtValue());
             CPRawRuntimeConstant* rrc = dynamic_cast<CPRawRuntimeConstant*>(rc);
 
             // In the case that rc is the unadjusted address of either the fallthrough next bytecode or the condbr target

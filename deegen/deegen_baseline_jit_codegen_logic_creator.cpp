@@ -6,6 +6,7 @@
 #include "drt/baseline_jit_codegen_helper.h"
 #include "deegen_ast_inline_cache.h"
 #include "deegen_stencil_fixup_cross_reference_helper.h"
+#include "drt/platform.h"
 
 namespace dast {
 
@@ -318,7 +319,8 @@ DeegenBytecodeBaselineJitInfo WARN_UNUSED DeegenBytecodeBaselineJitInfo::Create(
     std::unordered_map<std::string, size_t> stencilToFastPathOffsetMap;
     {
         size_t offset = 0;
-        for (size_t i = 0; i < stencilList.size(); i++) {
+        for (size_t i = 0; i < stencilList.size(); i++)
+        {
             std::string name = stencilGeneratorList[i]->GetResultFunctionName();
             ReleaseAssert(!stencilToFastPathOffsetMap.count(name));
             stencilToFastPathOffsetMap[name] = offset;
@@ -466,8 +468,7 @@ DeegenBytecodeBaselineJitInfo WARN_UNUSED DeegenBytecodeBaselineJitInfo::Create(
     {
         std::string name = stencilGeneratorList[i]->GetResultFunctionName();
         ReleaseAssert(stencilToFastPathOffsetMap.count(name));
-        // std::fprintf(stderr, "%zu == %zu\n", stencilCgInfos[i].offsetInFastPath, stencilToFastPathOffsetMap[name]);
-        // ReleaseAssert(stencilCgInfos[i].offsetInFastPath == stencilToFastPathOffsetMap[name]);
+        ReleaseAssert(stencilCgInfos[i].offsetInFastPath == stencilToFastPathOffsetMap[name]);
     }
 
     // Generate the audit log
@@ -476,27 +477,27 @@ DeegenBytecodeBaselineJitInfo WARN_UNUSED DeegenBytecodeBaselineJitInfo::Create(
         Triple targetTriple = stencilList[0].m_triple;
 
         std::string fastPathAuditLog = DumpStencilDisassemblyForAuditPurpose(
-            targetTriple, false /*isDataSection*/, fastPath.m_code, fastPath.m_relocMarker, "// " /*linePrefix*/);
+            targetTriple, false /*isDataSection*/, fastPath.m_code, fastPath.m_relocMarker, x_asmCommentStart + " " /*linePrefix*/);
 
-        std::string finalAuditLog = std::string("// Fast Path:\n") + fastPathAuditLog;
+        std::string finalAuditLog = std::string(x_asmCommentStart + " Fast Path:\n") + fastPathAuditLog;
 
         if (slowPath.m_code.size() > 0)
         {
             std::string slowPathAuditLog = DumpStencilDisassemblyForAuditPurpose(
-                targetTriple, false /*isDataSection*/, slowPath.m_code, slowPath.m_relocMarker, "// " /*linePrefix*/);
+                targetTriple, false /*isDataSection*/, slowPath.m_code, slowPath.m_relocMarker, x_asmCommentStart + " " /*linePrefix*/);
 
-            finalAuditLog += std::string("//\n// Slow Path:\n") + slowPathAuditLog;
+            finalAuditLog += std::string(x_asmCommentStart + "\n" + x_asmCommentStart + " Slow Path:\n") + slowPathAuditLog;
         }
 
         if (dataSec.m_code.size() > 0)
         {
             std::string dataSecAuditLog = DumpStencilDisassemblyForAuditPurpose(
-                targetTriple, true /*isDataSection*/, dataSec.m_code, dataSec.m_relocMarker, "// " /*linePrefix*/);
+                targetTriple, true /*isDataSection*/, dataSec.m_code, dataSec.m_relocMarker, x_asmCommentStart + " " /*linePrefix*/);
 
-            finalAuditLog += std::string("//\n// Data Section:\n") + dataSecAuditLog;
+            finalAuditLog += std::string(x_asmCommentStart + "\n" + x_asmCommentStart + " Data Section:\n") + dataSecAuditLog;
         }
 
-        finalAuditLog += std::string("//\n\n");
+        finalAuditLog += std::string(x_asmCommentStart + "\n\n");
         res.m_disasmForAudit = finalAuditLog;
     }
 

@@ -426,7 +426,7 @@ void DeegenFunctionEntryLogicCreator::GenerateBaselineJitStencil(std::unique_ptr
 
     DeegenStencilLoweringPass slPass = DeegenStencilLoweringPass::RunIrRewritePhase(func, DeegenPlaceholderUtils::FindFallthroughPlaceholderSymbolName(rcDef));
 
-    std::string asmFile = CompileLLVMModuleToAssemblyFileForStencilGeneration(srcModule.get(), llvm::Reloc::Static, llvm::CodeModel::Large);
+    std::string asmFile = CompileLLVMModuleToAssemblyFileForStencilGeneration(srcModule.get(), llvm::Reloc::Static, x_targetX64 ? llvm::CodeModel::Small : llvm::CodeModel::Large);
 
     slPass.RunAsmRewritePhase(asmFile);
     asmFile = slPass.m_primaryPostTransformAsmFile;

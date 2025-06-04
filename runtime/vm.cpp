@@ -65,7 +65,7 @@ VM* WARN_UNUSED VM::Create()
     void* vmVoid = reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(ptrVoid) + x_vmBaseOffset);
     activeVMForCurrentThread = reinterpret_cast<VM*>(vmVoid);
     assert(reinterpret_cast<uintptr_t>(vmVoid) % x_vmLayoutAlignment == 0);
-    constexpr size_t sizeToMap = RoundUpToMultipleOf<x_pageSize>(sizeof(VM));
+    constexpr size_t sizeToMap = RoundUpToMultipleOf<x_targetPageSize>(sizeof(VM));
     {
         void* r = mmap(vmVoid, sizeToMap, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE | MAP_FIXED, -1, 0);
         CHECK_LOG_ERROR_WITH_ERRNO(r != MAP_FAILED, "Failed to allocate VM struct");
@@ -120,11 +120,11 @@ bool WARN_UNUSED VM::InitializeVMBase()
     m_userHeapCurPtr = -static_cast<int64_t>(x_vmBaseOffset - x_vmUserHeapSize);
 
     static_assert(sizeof(VM) >= x_minimum_valid_heap_address);
-    m_systemHeapPtrLimit = static_cast<uint32_t>(RoundUpToMultipleOf<x_pageSize>(sizeof(VM)));
+    m_systemHeapPtrLimit = static_cast<uint32_t>(RoundUpToMultipleOf<x_targetPageSize>(sizeof(VM)));
     m_systemHeapCurPtr = sizeof(VM);
 
     m_spdsPageFreeList.store(static_cast<uint64_t>(x_spdsAllocationPageSize));
-    m_spdsPageAllocLimit = -static_cast<int32_t>(x_pageSize);
+    m_spdsPageAllocLimit = -static_cast<int32_t>(x_targetPageSize);
 
     m_executionThreadSpdsAlloc.SetHost(this);
     m_compilerThreadSpdsAlloc.SetHost(this);
@@ -154,9 +154,9 @@ void __attribute__((__preserve_most__)) VM::BumpUserHeap()
     // TODO: consider allocating smaller sizes on the first few allocations
     //
     intptr_t newHeapLimit = m_userHeapCurPtr & (~static_cast<intptr_t>(x_allocationSize - 1));
-    assert(newHeapLimit <= m_userHeapCurPtr && newHeapLimit % static_cast<int64_t>(x_pageSize) == 0 && newHeapLimit < m_userHeapPtrLimit);
+    assert(newHeapLimit <= m_userHeapCurPtr && newHeapLimit % static_cast<int64_t>(x_targetPageSize) == 0 && newHeapLimit < m_userHeapPtrLimit);
     size_t lengthToAllocate = static_cast<size_t>(m_userHeapPtrLimit - newHeapLimit);
-    assert(lengthToAllocate % x_pageSize == 0);
+    assert(lengthToAllocate % x_targetPageSize == 0);
 
     uintptr_t allocAddr = VMBaseAddress() + static_cast<uint64_t>(newHeapLimit);
     void* r = mmap(reinterpret_cast<void*>(allocAddr), lengthToAllocate, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE | MAP_FIXED, -1, 0);
@@ -180,10 +180,10 @@ void VM::BumpSystemHeap()
     // TODO: consider allocating smaller sizes on the first few allocations
     //
     uint32_t newHeapLimit = RoundUpToMultipleOf<x_allocationSize>(m_systemHeapCurPtr);
-    assert(newHeapLimit >= m_systemHeapCurPtr && newHeapLimit % static_cast<int64_t>(x_pageSize) == 0 && newHeapLimit > m_systemHeapPtrLimit);
+    assert(newHeapLimit >= m_systemHeapCurPtr && newHeapLimit % static_cast<int64_t>(x_targetPageSize) == 0 && newHeapLimit > m_systemHeapPtrLimit);
 
     size_t lengthToAllocate = static_cast<size_t>(newHeapLimit - m_systemHeapPtrLimit);
-    assert(lengthToAllocate % x_pageSize == 0);
+    assert(lengthToAllocate % x_targetPageSize == 0);
 
     uintptr_t allocAddr = VMBaseAddress() + static_cast<uint64_t>(m_systemHeapPtrLimit);
     void* r = mmap(reinterpret_cast<void*>(allocAddr), lengthToAllocate, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE | MAP_FIXED, -1, 0);
@@ -229,7 +229,7 @@ int32_t WARN_UNUSED VM::SpdsAllocatePageSlowPathImpl()
     // We allocate 4K, 8K, 16K, 32K first (the highest 4K is not used to prevent all kinds of overflowing issue)
     // After that we allocate 64K each time
     //
-    assert(m_spdsPageAllocLimit % static_cast<int32_t>(x_pageSize) == 0 && m_spdsPageAllocLimit % static_cast<int32_t>(x_spdsAllocationPageSize) == 0);
+    assert(m_spdsPageAllocLimit % static_cast<int32_t>(x_targetPageSize) == 0 && m_spdsPageAllocLimit % static_cast<int32_t>(x_spdsAllocationPageSize) == 0);
     size_t lengthToAllocate = x_allocationSize;
     if (unlikely(m_spdsPageAllocLimit > -x_allocationSize))
     {
@@ -244,7 +244,7 @@ int32_t WARN_UNUSED VM::SpdsAllocatePageSlowPathImpl()
             assert(lengthToAllocate <= x_allocationSize);
         }
     }
-    assert(lengthToAllocate > 0 && lengthToAllocate % x_pageSize == 0 && lengthToAllocate % x_spdsAllocationPageSize == 0);
+    assert(lengthToAllocate > 0 && lengthToAllocate % x_targetPageSize == 0 && lengthToAllocate % x_spdsAllocationPageSize == 0);
 
     VM_FAIL_IF(SubWithOverflowCheck(m_spdsPageAllocLimit, static_cast<int32_t>(lengthToAllocate), &m_spdsPageAllocLimit),
                "Resource limit exceeded: SPDS region overflowed 2GB memory limit.");
@@ -257,7 +257,7 @@ int32_t WARN_UNUSED VM::SpdsAllocatePageSlowPathImpl()
     // Allocate memory
     //
     uintptr_t allocAddr = VMBaseAddress() + SignExtendTo<uint64_t>(m_spdsPageAllocLimit);
-    assert(allocAddr % x_pageSize == 0 && allocAddr % x_spdsAllocationPageSize == 0);
+    assert(allocAddr % x_targetPageSize == 0 && allocAddr % x_spdsAllocationPageSize == 0);
     void* r = mmap(reinterpret_cast<void*>(allocAddr), static_cast<size_t>(lengthToAllocate), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE | MAP_FIXED, -1, 0);
     VM_FAIL_WITH_ERRNO_IF(r == MAP_FAILED,
                           "Out of Memory: Allocation of length %llu failed", static_cast<unsigned long long>(lengthToAllocate));

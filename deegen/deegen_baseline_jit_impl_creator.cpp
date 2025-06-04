@@ -198,7 +198,7 @@ void BaselineJitImplCreator::DoLowering(BytecodeIrInfo* bii, const DeegenGlobalB
     std::string asmFile = CompileLLVMModuleToAssemblyFileForStencilGeneration(
         m_module.get(),
         llvm::Reloc::Static,
-        llvm::CodeModel::Large,
+        x_targetX64 ? llvm::CodeModel::Small : llvm::CodeModel::Large,
         [](TargetOptions& opt) {
             // This is the option that is equivalent to the clang -fdata-sections flag
             // Put each data symbol into a separate data section so our stencil creation pass can produce more efficient result

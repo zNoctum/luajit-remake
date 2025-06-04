@@ -5,6 +5,7 @@
 #include "misc_type_helper.h"
 #include "misc_math_helper.h"
 #include "mmap_utils.h"
+#include "drt/platform.h"
 
 // A simple memory allocator for JIT memory allocation, using a segregated allocator for small allocations
 // and mmap directly for large allocations.
@@ -260,7 +261,7 @@ public:
     void Initialize(size_t size, DoublyLink* anchor)
     {
         assert(reinterpret_cast<uint64_t>(this) % x_pageSize == 0);
-        assert(size % 16384 == 0);
+        assert(size % x_targetPageSize == 0);
         m_cellSize = 0;
         m_unused1 = 0;
         m_unused2 = 0;
@@ -332,12 +333,17 @@ public:
         }
         m_totalUsedMemory = 0;
         m_totalOsMemoryUsage = 0;
-        m_reservedRangeCur = 0;
+        int map32bit = 0;
+        #ifndef __aarch64__
+            map32bit = MAP_32BIT;
+        #endif
+        
+        void* reservedRange = do_mmap_with_custom_alignment(JitMemoryPageHeaderBase::x_pageSize /*alignment*/, x_reserveRangeSize, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | map32bit);
+        assert(m_reservedRangeCur % JitMemoryPageHeaderBase::x_pageSize == 0);
+        m_reservedRangeCur = reinterpret_cast<uint64_t>(reservedRange);
         m_reservedRangeEnd = 0;
         m_laAnchor.prev = &m_laAnchor;
         m_laAnchor.next = &m_laAnchor;
-        void* reservedRange = do_mmap_with_custom_alignment(JitMemoryPageHeaderBase::x_pageSize /*alignment*/, x_reserveRangeSize, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE);
-        m_reservedRangeCur = reinterpret_cast<uint64_t>(reservedRange);
         assert(m_reservedRangeCur % JitMemoryPageHeaderBase::x_pageSize == 0);
         m_reservedRangeEnd = m_reservedRangeCur + x_reserveRangeSize;
 
@@ -483,7 +489,7 @@ private:
     // but to make things better, we reserve (not allocate) x_reserveRangeSize memory range from OS once,
     // then use MAP_FIXED to turn them into usable memory as needed
     //
-    static constexpr size_t x_reserveRangeSize = 4ULL * 1024 * 1024 * 1024;
+    static constexpr size_t x_reserveRangeSize = 256 * 1024 * 1024;
     static_assert(x_reserveRangeSize % JitMemoryPageHeaderBase::x_pageSize == 0);
 
     uint64_t m_reservedRangeCur;

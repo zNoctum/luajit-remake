@@ -87,12 +87,15 @@ SET(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -pthread ")
 # We don't want to add AVX flag though: it produces tricky problems with vzeroupper that 
 # requires some work to get correct, and I don't think we are benefiting much from AVX anyway.
 #
-# SET(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -mbmi -msse4 ")
-# SET(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -mbmi -msse4 ")
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64")
+  SET(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -mbmi -msse4 ")
+  SET(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -mbmi -msse4 ")
+endif()
+
 
 # -rdynamic so symbols are exposed to generated code
 # 
-#SET(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} -rdynamic ")
+SET(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} -rdynamic ")
 
 # If debug symbols are emitted, redirect them to point at the right location
 # The reference to source code files always have prefix /home/u/project/ 
@@ -223,7 +226,7 @@ set(UNIT_TEST_LINK_LIBRARIES
   deegen_fps_lib
   deegen_user_builtin_lib
   deegen_unit_test_ir
-  deegen_common_snippet_ir_target
+  deegen_common_snippet_ir
   git_commit_hash_info
 )
 
@@ -252,7 +255,6 @@ target_link_libraries(main PUBLIC
   ${LLVM_EXTRA_LINK_LIBRARIES}
 )
 set_target_properties(main PROPERTIES LINK_FLAGS " ${LLVM_EXTRA_LINK_FLAGS} -Wl,-rpath='$ORIGIN/shared_libs' ")
-#set_target_properties(main PROPERTIES LINK_FLAGS " ${LLVM_EXTRA_LINK_FLAGS} -Wl,-rpath='$ORIGIN/shared_libs' -fsanitize=address ")
 
 # It seems like duplicate symbols (e.g., defining the same function twice, or other ODR violations) are
 # normally ignored if they happen in the static library, which could cause tricky bugs.
@@ -269,7 +271,6 @@ target_link_libraries(main_detect_duplicate_symbols PUBLIC
   ${LLVM_EXTRA_LINK_LIBRARIES}
 )
 set_target_properties(main_detect_duplicate_symbols PROPERTIES LINK_FLAGS " ${LLVM_EXTRA_LINK_FLAGS} -Wl,-rpath='$ORIGIN/shared_libs' ")
-#set_target_properties(main_detect_duplicate_symbols PROPERTIES LINK_FLAGS " ${LLVM_EXTRA_LINK_FLAGS} -Wl,-rpath='$ORIGIN/shared_libs' -fsanitize=address ")
 
 
 # add the standalone Lua engine executable
@@ -284,7 +285,6 @@ target_link_libraries(luajitr PUBLIC
   deegen_user_builtin_lib
   -Wl,--end-group
 )
-#set_target_properties(luajitr PROPERTIES LINK_FLAGS " -fsanitize=address ")
 
 # detect duplicate symbols, see above
 #
@@ -298,5 +298,3 @@ target_link_libraries(luajitr_detect_duplicate_symbols PUBLIC
   deegen_user_builtin_lib
   -Wl,--no-whole-archive
 )
-
-#set_target_properties(luajitr_detect_duplicate_symbols PROPERTIES LINK_FLAGS " -fsanitize=address ")

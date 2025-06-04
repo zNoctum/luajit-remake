@@ -30,6 +30,8 @@
 #include "cxx_symbol_demangler.h"
 #include "deegen_desugaring_level.h"
 
+#include "drt/platform.h"
+
 namespace dast
 {
 
@@ -1008,31 +1010,6 @@ inline llvm::Instruction* WARN_UNUSED CreateAdd(llvm::Value* lhs, llvm::Value* r
     return CreateArithmeticBinaryOp(llvm::BinaryOperator::BinaryOps::Add, lhs, rhs, mustHaveNoUnsignedWrap, mustHaveNoSignedWrap);
 }
 
-inline llvm::Instruction* WARN_UNUSED CreateAnd(llvm::Value* lhs, llvm::Value* rhs)
-{
-    return CreateArithmeticBinaryOp(llvm::BinaryOperator::BinaryOps::And, lhs, rhs, false, false);
-}
-
-inline llvm::Instruction* WARN_UNUSED CreateOr(llvm::Value* lhs, llvm::Value* rhs)
-{
-    return CreateArithmeticBinaryOp(llvm::BinaryOperator::BinaryOps::Or, lhs, rhs, false, false);
-}
-
-inline llvm::Instruction* WARN_UNUSED CreateShr(llvm::Value* lhs, llvm::Value* rhs)
-{
-    return CreateArithmeticBinaryOp(llvm::BinaryOperator::BinaryOps::LShr, lhs, rhs, false, false);
-}
-
-inline llvm::Instruction* WARN_UNUSED CreateAShr(llvm::Value* lhs, llvm::Value* rhs)
-{
-    return CreateArithmeticBinaryOp(llvm::BinaryOperator::BinaryOps::AShr, lhs, rhs, false, false);
-}
-
-inline llvm::Instruction* WARN_UNUSED CreateShl(llvm::Value* lhs, llvm::Value* rhs)
-{
-    return CreateArithmeticBinaryOp(llvm::BinaryOperator::BinaryOps::Shl, lhs, rhs, false, false);
-}
-
 inline llvm::Instruction* WARN_UNUSED CreateSignedAddNoOverflow(llvm::Value* lhs, llvm::Value* rhs, llvm::Instruction* insertBefore = nullptr)
 {
     llvm::Instruction* res = CreateAdd(lhs, rhs, false /*mustHaveNoUnsignedWrap*/, true /*mustHaveNoSignedWrap*/);
@@ -1744,33 +1721,65 @@ inline llvm::Instruction* WARN_UNUSED FindFirstNonAllocaInstInEntryBB(llvm::Func
     ReleaseAssert(false);
 };
 
+// 1-15 byte x86-64 NOP instruction sequences
+// Note that all sequences are padded to 16 bytes to make addressing easier
+//
+inline constexpr std::array<uint8_t, 15 * 16> x_x64_multi_byte_nop_instruction_seq_table = {
+    // From Intel's Manual:
+    //    https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-vol-2b-manual.pdf
+    //    Page 165, table 4-12, "Recommended Multi-Byte Sequence of NOP Instruction"
+    //
+    // AMD Manual recommends the same byte sequence.
+    //
+    0x90, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x66, 0x90, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x0F, 0x1F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x0F, 0x1F, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x0F, 0x1F, 0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x66, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    // NOP 10-15: we use the NOP sequence from JavaScriptCore, see
+    //     https://sillycross.github.io/r/WebKit/Source/JavaScriptCore/assembler/X86Assembler.h.html#3990
+    //
+    0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x66, 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x66, 0x66, 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x66, 0x66, 0x66, 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00,
+    0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00
+};
+inline constexpr uint8_t x_arm64_nop_seq[16] = {
+    0x1F, 0x20, 0x03, 0xD5, 0x1F, 0x20, 0x03, 0xD5, 0x1F, 0x20, 0x03, 0xD5, 0x1F, 0x20, 0x03, 0xD5
+};
+
+inline const uint8_t* WARN_UNUSED GetMultiByteNOPInst(size_t instLength)
+{
+    ReleaseAssert(1 <= instLength && instLength <= 15);
+    if (x_targetX64)
+    {
+        return x_x64_multi_byte_nop_instruction_seq_table.data() + (instLength - 1) * 16;
+    }
+    else
+    {
+        ReleaseAssert(instLength % 4 == 0);
+        return x_arm64_nop_seq;
+    }
+}
+
 // Populate multi-byte NOP instruction to an address range
 //
 inline void FillAddressRangeWithX64MultiByteNOPs(uint8_t* addr, size_t length)
 {
-    static constexpr uint8_t nop4[] = { 0x1F, 0x20, 0x03, 0xD5 };
-
-    ReleaseAssert(length % 4 == 0);
-
     while (length > 0)
     {
-        memcpy(addr, nop4, 4);
-        length -= 4;
-        addr += 4;
+        size_t instLen = x_targetX64 ? 15 : 12;
+        instLen = std::min(instLen, length);
+        memcpy(addr, GetMultiByteNOPInst(instLen), instLen);
+        length -= instLen;
+        addr += instLen;
     }
 }
-
-// Utility functions for repatchable jumps (jmp imm32)
-//
-struct X64PatchableJumpUtil
-{
-    static llvm::Value* WARN_UNUSED GetDest(llvm::Value* jmpEndAddr, llvm::BasicBlock* insertAtEnd)
-    {
-        using namespace llvm;
-        Module* module = insertAtEnd->getParent()->getParent();
-        ReleaseAssert(llvm_value_has_type<void*>(jmpEndAddr));
-        return CreateCallToDeegenCommonSnippet(module, "GetJmpDest", { jmpEndAddr }, insertAtEnd);
-    }
-};
 
 }   // namespace dast

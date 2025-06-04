@@ -1,5 +1,6 @@
 ﻿#include "deegen_recover_asm_cfg.h"
 #include "deegen_magic_asm_helper.h"
+#include "drt/platform.h"
 
 namespace dast {
 
@@ -30,7 +31,7 @@ void DeegenAsmCfg::AnalyzeIndirectBranch(X64AsmFile* file, llvm::Function* /*fun
                 //
                 if (addHumanDebugComment)
                 {
-                    line.m_trailingComments += "// [CFG]: tailcall";
+                    line.m_trailingComments += x_asmCommentStart + " [CFG]: tailcall";
                 }
             }
             else
@@ -70,7 +71,7 @@ void DeegenAsmCfg::AnalyzeIndirectBranch(X64AsmFile* file, llvm::Function* /*fun
                     allNormalizedDestLabels.insert(normalizedLabel);
                 }
 
-                std::string humanDebugText = " # [CFG]: dest =";
+                std::string humanDebugText = " " + x_asmCommentStart + " [CFG]: dest =";
                 bool isFirst = true;
                 for (const std::string& dstLabel : allNormalizedDestLabels)
                 {

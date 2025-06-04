@@ -10,7 +10,7 @@
 #include "spds_doubly_linked_list.h"
 #include "baseline_jit_codegen_helper.h"
 #include "bytecode_builder_utils.h"
-#include <arm_neon.h>
+#include "drt/platform.h"
 #include <bits/floatn-common.h>
 
 class StackFrameHeader;
@@ -119,7 +119,7 @@ public:
     static constexpr size_t x_defaultStackSlots = 4096;
     static constexpr size_t x_rootCoroutineDefaultStackSlots = 16384;
     static constexpr size_t x_stackOverflowProtectionAreaSize = 65536;
-    static_assert(x_stackOverflowProtectionAreaSize % VM::x_pageSize == 0);
+    static_assert(x_stackOverflowProtectionAreaSize % x_targetPageSize == 0);
 
     static CoroutineRuntimeContext* Create(VM* vm, UserHeapPointer<TableObject> globalObject, size_t numStackSlots = x_defaultStackSlots);
 
@@ -344,27 +344,31 @@ public:
             switch (trait->m_codePtrPatchRecords[i].m_kind)
             {
             case JitCallInlineCacheTraits::PatchRecordKind::G0:
+                assert(!x_targetX64);
                 UnalignedStore<uint32_t>(addr, updateInstr(UnalignedLoad<uint32_t>(addr), 0));
-                __builtin___clear_cache(reinterpret_cast<char*>(addr), reinterpret_cast<char*>(addr) + 4);
+                clear_cache(reinterpret_cast<char*>(addr), reinterpret_cast<char*>(addr) + 4);
                 break;
             case JitCallInlineCacheTraits::PatchRecordKind::G1:
+                assert(!x_targetX64);
                 UnalignedStore<uint32_t>(addr, updateInstr(UnalignedLoad<uint32_t>(addr), 16));
-                __builtin___clear_cache(reinterpret_cast<char*>(addr), reinterpret_cast<char*>(addr) + 4);
+                clear_cache(reinterpret_cast<char*>(addr), reinterpret_cast<char*>(addr) + 4);
                 break;
             case JitCallInlineCacheTraits::PatchRecordKind::G2:
+                assert(!x_targetX64);
                 UnalignedStore<uint32_t>(addr, updateInstr(UnalignedLoad<uint32_t>(addr), 32));
-                __builtin___clear_cache(reinterpret_cast<char*>(addr), reinterpret_cast<char*>(addr) + 4);
+                clear_cache(reinterpret_cast<char*>(addr), reinterpret_cast<char*>(addr) + 4);
                 break;
             case JitCallInlineCacheTraits::PatchRecordKind::G3:
+                assert(!x_targetX64);
                 UnalignedStore<uint32_t>(addr, updateInstr(UnalignedLoad<uint32_t>(addr), 48));
-                __builtin___clear_cache(reinterpret_cast<char*>(addr), reinterpret_cast<char*>(addr) + 4);
+                clear_cache(reinterpret_cast<char*>(addr), reinterpret_cast<char*>(addr) + 4);
                 break;
             case JitCallInlineCacheTraits::PatchRecordKind::Int32:
-                ReleaseAssert(false);
+                assert(x_targetX64);
                 UnalignedStore<uint32_t>(addr, UnalignedLoad<uint32_t>(addr) + static_cast<uint32_t>(diff));
                 break;
             case JitCallInlineCacheTraits::PatchRecordKind::Int64:
-                ReleaseAssert(false);
+                assert(x_targetX64);
                 UnalignedStore<uint64_t>(addr, UnalignedLoad<uint64_t>(addr) + diff);
                 break;
             }

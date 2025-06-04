@@ -8,7 +8,6 @@
 #include "deegen_magic_asm_helper.h"
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/Linker/Linker.h"
-#include <llvm/Analysis/ScalarEvolutionExpressions.h>
 #include "deegen_parse_asm_text.h"
 #include "invoke_clang_helper.h"
 #include "drt/baseline_jit_codegen_helper.h"
@@ -496,11 +495,12 @@ static void InsertBaselineJitCallIcMagicAsmForDirectCall(llvm::Module* module,
     //
     // Therefore, we must teach LLVM that the direct-call check may directly branch to IC slow path by putting it in the GOTO list as well.
     //
-    std::string asmText = "mov $0, #:abs_g3:$2;movk $0, #:abs_g2_nc:$2; movk $0, #:abs_g1_nc:$2; movk $0, #:abs_g0_nc:$2;cmp $0, $1;b.ne ${3:l};b.ne ${4:l};";
+    std::string asmText = x_targetX64 ? "movabsq $2, $0;cmpq $0, $1;jne ${3:l}; jne ${4:l};"
+                                      : "mov $0, #:abs_g3:$2;movk $0, #:abs_g2_nc:$2; movk $0, #:abs_g1_nc:$2; movk $0, #:abs_g0_nc:$2;cmp $0, $1;b.ne ${3:l};b.ne ${4:l};";
     std::string constraintText = "=&r,r,i,!i,!i,~{cc},~{dirflag},~{fpsr},~{flags}";
 
     ReleaseAssert(unique_ord <= 0xFFFF);
-    asmText = "mov x0, #" + std::to_string(unique_ord) + ";" + asmText;
+    asmText = (x_targetX64 ? "movl $$" + std::to_string(unique_ord) + ", eax" : "mov x0, #" + std::to_string(unique_ord)) + ";" + asmText;
 
     asmText = MagicAsm::WrapLLVMAsmPayload(asmText, MagicAsmKind::CallIcDirectCall);
 
@@ -552,20 +552,32 @@ static void InsertBaselineJitCallIcMagicAsmForClosureCall(llvm::Module* module,
     //
     // args: [i32 cb32, ptr cached_cb32] returns: void
     //
-    std::string asmText = "movz $0, #:abs_g1:$2; movk $0, #:abs_g0_nc:$2;cmp $0, $1;b.ne ${3:l};";
-    std::string constraintText = "=&r,r,i,!i,~{cc},~{dirflag},~{fpsr},~{flags}";
-
-    ReleaseAssert(unique_ord <= 1000000000);
-    asmText = "mov x0, #" + std::to_string(unique_ord) + ";" + asmText;
+    std::string asmText;
+    std::string constraintText;
+    FunctionType* fty;
+    ReleaseAssert(unique_ord <= 0xFFFF);
+    if (x_targetX64)
+    {
+        asmText = "cmpl $1, $0; jne ${2:l};";
+        constraintText = "r,i,!i,~{cc},~{dirflag},~{fpsr},~{flags}";
+        asmText = "movl $$" + std::to_string(unique_ord) + ", eax;" + asmText;
+        fty = FunctionType::get(llvm_type_of<void>(ctx), { llvm_type_of<uint32_t>(ctx), llvm_type_of<void*>(ctx) }, false);
+    }
+    else
+    {
+        asmText = "movz $0, #:abs_g1:$2; movk $0, #:abs_g0_nc:$2;cmp $0, $1;b.ne ${3:l};";
+        constraintText = "=&r,r,i,!i,~{cc},~{dirflag},~{fpsr},~{flags}";
+        asmText = "mov x0, #" + std::to_string(unique_ord) + ";" + asmText;
+        fty = FunctionType::get(llvm_type_of<uint64_t>(ctx), { llvm_type_of<uint32_t>(ctx), llvm_type_of<void*>(ctx) }, false);
+    }
 
     asmText = MagicAsm::WrapLLVMAsmPayload(asmText, MagicAsmKind::CallIcClosureCall);
 
     ReleaseAssert(llvm_value_has_type<uint32_t>(codeBlockSysHeapPtrVal));
 
-    GlobalVariable* cpSym = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(module, CP_PLACEHOLDER_CALL_IC_CALLEE_CB32, /*lower*/ 0, /*upper*/ UINT32_MAX + 1);
+    GlobalVariable* cpSym = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(module, CP_PLACEHOLDER_CALL_IC_CALLEE_CB32, /*lower*/ 0, /*upper*/ UINT32_MAX);
     ReleaseAssert(llvm_value_has_type<void*>(cpSym));
 
-    FunctionType* fty = FunctionType::get(llvm_type_of<uint64_t>(ctx), { llvm_type_of<uint32_t>(ctx), llvm_type_of<void*>(ctx) }, false);
     InlineAsm* ia = InlineAsm::get(fty,
                                    asmText,
                                    constraintText,
@@ -671,7 +683,7 @@ std::vector<DeegenCallIcLogicCreator::BaselineJitLLVMLoweringResult> WARN_UNUSED
     {
         ReleaseAssert(isa<CallInst>(dcHitOrigin));
 
-        GlobalVariable* gv = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(ifi->GetModule(), CP_PLACEHOLDER_CALL_IC_CALLEE_CB32, /*lower*/ 0, /*upper*/ UINT32_MAX + 1);
+        GlobalVariable* gv = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(ifi->GetModule(), CP_PLACEHOLDER_CALL_IC_CALLEE_CB32, /*lower*/ 0, /*upper*/ UINT32_MAX);
         Value* iGv = new PtrToIntInst(gv, llvm_type_of<uint32_t>(ctx), "", dcHitOrigin);
         Value* dcHitCalleeCb = ifi->CallDeegenCommonSnippet("GetCbFromU32", { iGv }, dcHitOrigin);
         Value* dcHitCodePtr = DeegenInsertOrGetCopyAndPatchPlaceholderSymbol(ifi->GetModule(), CP_PLACEHOLDER_CALL_IC_CALLEE_CODE_PTR, /*lower*/ -1, /*upper*/ -1);
@@ -1122,29 +1134,40 @@ std::vector<DeegenCallIcLogicCreator::BaselineJitAsmTransformResult> WARN_UNUSED
         //     jne closure_call_ic_entry
         //     jne dc_ic_miss_slowpath
         //
-        ReleaseAssert(dcPayload->m_lines.size() == 8);
+        ReleaseAssert(dcPayload->m_lines.size() == (x_targetX64 ? 5 : 8));
 
         // Decode the mov x0, $uniq_id line to get uniq_id
         //
         auto getIdFromMagicPayloadLine = [&](X64AsmLine& line) WARN_UNUSED -> uint64_t
         {
-            ReleaseAssert(line.NumWords() == 3 && line.GetWord(0).starts_with("mov") && line.GetWord(1).starts_with("x"));
-            std::string s = line.GetWord(2);
-            ReleaseAssert(s.starts_with("#"));
-            int val = StoiOrFail(s.substr(1, s.length() - 1));
+            int val;
+            if (x_targetX64)
+            {
+                ReleaseAssert(line.NumWords() == 3 && line.GetWord(0) == "movl" && line.GetWord(2) == "eax");
+                std::string s = line.GetWord(1);
+                ReleaseAssert(s.starts_with("$") && s.ends_with(","));
+                val = StoiOrFail(s.substr(1, s.length() - 2));
+            }
+            else
+            {
+                ReleaseAssert(line.NumWords() == 3 && line.GetWord(0).starts_with("mov") && line.GetWord(1).starts_with("x"));
+                std::string s = line.GetWord(2);
+                ReleaseAssert(s.starts_with("#"));
+                val = StoiOrFail(s.substr(1, s.length() - 1));
+            }
             ReleaseAssert(val >= 0);
             return static_cast<uint64_t>(val);
         };
 
         uint64_t icUniqueOrd = getIdFromMagicPayloadLine(dcPayload->m_lines[0]);
 
-        ReleaseAssert(dcPayload->m_lines[6].IsConditionalJumpInst());
-        std::string ccBlockLabel = dcPayload->m_lines[6].GetWord(1);
+        ReleaseAssert(dcPayload->m_lines[x_targetX64 ? 3 : 6].IsConditionalJumpInst());
+        std::string ccBlockLabel = dcPayload->m_lines[x_targetX64 ? 3 : 6].GetWord(1);
         ReleaseAssert(file->m_labelNormalizer.QueryLabelExists(ccBlockLabel));
         ccBlockLabel = file->m_labelNormalizer.GetNormalizedLabel(ccBlockLabel);
 
-        ReleaseAssert(dcPayload->m_lines[7].IsConditionalJumpInst());
-        std::string dcIcMissSlowPathLabel = dcPayload->m_lines[7].GetWord(1);
+        ReleaseAssert(dcPayload->m_lines[x_targetX64 ? 4 : 7].IsConditionalJumpInst());
+        std::string dcIcMissSlowPathLabel = dcPayload->m_lines[x_targetX64 ? 4 : 7].GetWord(1);
         dcIcMissSlowPathLabel = file->m_labelNormalizer.GetNormalizedLabel(dcIcMissSlowPathLabel);
 
         X64AsmBlock* ccBlock = nullptr;
@@ -1181,11 +1204,11 @@ std::vector<DeegenCallIcLogicCreator::BaselineJitAsmTransformResult> WARN_UNUSED
         //     cmp $cached_val, hidden_class
         //     jne cc_ic_miss_slowpath
         //
-        ReleaseAssert(ccPayload->m_lines.size() == 5);
+        ReleaseAssert(ccPayload->m_lines.size() == (x_targetX64 ? 3 : 5));
         ReleaseAssert(getIdFromMagicPayloadLine(ccPayload->m_lines[0]) == icUniqueOrd);
 
-        ReleaseAssert(ccPayload->m_lines[4].IsConditionalJumpInst());
-        std::string ccIcMissSlowPathLabel = ccPayload->m_lines[4].GetWord(1);
+        ReleaseAssert(ccPayload->m_lines[x_targetX64 ? 2 : 4].IsConditionalJumpInst());
+        std::string ccIcMissSlowPathLabel = ccPayload->m_lines[x_targetX64 ? 2 : 4].GetWord(1);
         ReleaseAssert(file->m_labelNormalizer.QueryLabelExists(ccIcMissSlowPathLabel));
         ccIcMissSlowPathLabel = file->m_labelNormalizer.GetNormalizedLabel(ccIcMissSlowPathLabel);
 
@@ -1218,9 +1241,12 @@ std::vector<DeegenCallIcLogicCreator::BaselineJitAsmTransformResult> WARN_UNUSED
             newList.push_back(dcPayload->m_lines[1]);
             newList.push_back(dcPayload->m_lines[2]);
             newList.push_back(dcPayload->m_lines[3]);
-            newList.push_back(dcPayload->m_lines[4]);
-            newList.push_back(dcPayload->m_lines[5]);
-            newList.push_back(dcPayload->m_lines[6]);
+            if (!x_targetX64)
+            {
+                newList.push_back(dcPayload->m_lines[4]);
+                newList.push_back(dcPayload->m_lines[5]);
+                newList.push_back(dcPayload->m_lines[6]);
+            }
             ReleaseAssert(newList.back().IsConditionalJumpInst());
             newList.back().GetWord(1) = "__deegen_cp_placeholder_" + std::to_string(CP_PLACEHOLDER_IC_MISS_DEST);
 
@@ -1252,8 +1278,11 @@ std::vector<DeegenCallIcLogicCreator::BaselineJitAsmTransformResult> WARN_UNUSED
             std::vector<X64AsmLine> newList;
             newList.push_back(ccPayload->m_lines[1]);
             newList.push_back(ccPayload->m_lines[2]);
-            newList.push_back(ccPayload->m_lines[3]);
-            newList.push_back(ccPayload->m_lines[4]);
+            if (!x_targetX64)
+            {
+                newList.push_back(ccPayload->m_lines[3]);
+                newList.push_back(ccPayload->m_lines[4]);
+            }
             ReleaseAssert(newList.back().IsConditionalJumpInst());
             newList.back().GetWord(1) = "__deegen_cp_placeholder_" + std::to_string(CP_PLACEHOLDER_IC_MISS_DEST);
 
@@ -1432,16 +1461,24 @@ void DeegenCallIcLogicCreator::BaselineJitAsmTransformResult::FixupSMCRegionAfte
     block->m_lines.push_back(termJmp);
 
     ReleaseAssert(!block->m_endsWithJmpToLocalLabel);
-    block->m_endsWithJmpToLocalLabel = false;
-    // block->m_terminalJmpTargetLabel = m_labelForCcIcMissLogic;
-    block->m_indirectBranchTargets.push_back(m_labelForCcIcMissLogic);
 
-    ReleaseAssert(block->m_lines.back().GetWord(0) == "b");
-    block->m_lines.pop_back();
+    if (x_targetX64)
+    {
+        block->m_endsWithJmpToLocalLabel = true;
+        block->m_terminalJmpTargetLabel = m_labelForCcIcMissLogic;
+    }
+    else
+    {
+        block->m_endsWithJmpToLocalLabel = false;
+        block->m_indirectBranchTargets.push_back(m_labelForCcIcMissLogic);
 
-    block->m_lines.push_back(X64AsmLine::Parse("\tadrp\tx16, " + m_labelForCcIcMissLogic));
-    block->m_lines.push_back(X64AsmLine::Parse("\tadd\tx16, x16, :lo12:" + m_labelForCcIcMissLogic));
-    block->m_lines.push_back(X64AsmLine::Parse("\tbr\tx16"));
+        ReleaseAssert(block->m_lines.back().GetWord(0) == "b");
+        block->m_lines.pop_back();
+
+        block->m_lines.push_back(X64AsmLine::Parse("\tadrp\tx16, " + m_labelForCcIcMissLogic));
+        block->m_lines.push_back(X64AsmLine::Parse("\tadd\tx16, x16, :lo12:" + m_labelForCcIcMissLogic));
+        block->m_lines.push_back(X64AsmLine::Parse("\tbr\tx16"));
+    }
 }
 
 void DeegenCallIcLogicCreator::BaselineJitAsmTransformResult::EmitComputeLabelOffsetAndLengthSymbol(X64AsmFile* file)
@@ -1847,7 +1884,10 @@ static CreateCodegenCallIcLogicImplResult WARN_UNUSED CreateCodegenCallIcLogicIm
                         kind = JitCallInlineCacheTraits::PatchRecordKind::Int64;
                         break;
                     case ELF::R_X86_64_32:
-                        kind = JitCallInlineCacheTraits::PatchRecordKind::Int32;
+                    case ELF::R_X86_64_32S:
+                    case ELF::R_X86_64_PLT32:
+                    case ELF::R_X86_64_PC32:
+                            kind = JitCallInlineCacheTraits::PatchRecordKind::Int32;
                         break;
                     default:
                         ReleaseAssert(false && "Unexpected Relocation Record!");
@@ -1933,9 +1973,9 @@ static CreateCodegenCallIcRepatchSmcRegionImplResult WARN_UNUSED CreateRepatchCa
     ReleaseAssert(cgRes.m_condBrFixupOffsetsInFastPath.empty());
 
     std::string disasmForAudit;
-    disasmForAudit += "# SMC region:\n";
-    disasmForAudit += "#     offset = " + std::to_string(smcRegionOffset) + " size = " + std::to_string(smcRegionSize) + "\n";
-    disasmForAudit += "# SMC region logic for Closure Call:\n\n";
+    disasmForAudit += x_asmCommentStart + " SMC region:\n";
+    disasmForAudit += x_asmCommentStart + "     offset = " + std::to_string(smcRegionOffset) + " size = " + std::to_string(smcRegionSize) + "\n";
+    disasmForAudit += x_asmCommentStart + " SMC region logic for Closure Call:\n\n";
     {
         std::vector<uint8_t> codeSlice;
         std::vector<bool> isPartOfRelocSlice;
@@ -2117,17 +2157,23 @@ static void SetupCallIcSmcRegionInitialInstructions(DeegenStencil& mainLogicSten
                                                     size_t dcIcMissDestOffsetInSlowPath)
 {
     {
-        constexpr uint8_t code[] = {
+        constexpr uint8_t arm64_code[] = {
             16, 0, 0,  144, // adrp x16, #0
             16, 2, 0,  145, // add  x16, x16, #0
             0,  2, 31, 214  // br   x16
         };
-        ReleaseAssert(smcRegionSize >= sizeof(code));
+        constexpr uint8_t x64_code[] = {
+            0xe9, 0, 0, 0, 0
+        };
+
+        const uint8_t* code = x_targetX64 ? x64_code : arm64_code;
+        size_t codeLen = x_targetX64 ? sizeof(x64_code) : sizeof(arm64_code);
+        ReleaseAssert(smcRegionSize >= codeLen);
 
         std::vector<uint8_t> byteSeq;
         byteSeq.resize(smcRegionSize, 0);
-        memcpy(byteSeq.data(), code, sizeof(code));
-        FillAddressRangeWithX64MultiByteNOPs(byteSeq.data() + sizeof(code), byteSeq.size() - sizeof(code));
+        memcpy(byteSeq.data(), code, codeLen);
+        FillAddressRangeWithX64MultiByteNOPs(byteSeq.data() + codeLen, byteSeq.size() - codeLen);
 
         for (size_t i = 0; i < smcRegionSize; i++)
         {
@@ -2148,19 +2194,33 @@ static void SetupCallIcSmcRegionInitialInstructions(DeegenStencil& mainLogicSten
         rlist.push_back(rr);
     }
 
-    constexpr uint64_t relocTypes[] = {
-        llvm::ELF::R_AARCH64_ADR_PREL_PG_HI21,
-        llvm::ELF::R_AARCH64_ADD_ABS_LO12_NC,
+    struct Rel {
+        uint64_t type;
+        uint64_t offset;
+        int64_t addend;
     };
-    for (size_t i = 0; i < std::size(relocTypes); i++)
+
+    constexpr Rel arm64_relocs[] = {
+        { llvm::ELF::R_AARCH64_ADR_PREL_PG_HI21, 0, 0 },
+        { llvm::ELF::R_AARCH64_ADD_ABS_LO12_NC, 4, 0 },
+    };
+
+    constexpr Rel x64_relocs[] = {
+        { llvm::ELF::R_X86_64_PC32, 1, -4},
+    };
+    const Rel* relocs = x_targetX64 ? x64_relocs : arm64_relocs;
+    size_t relocCount = x_targetX64 ? std::size(x64_relocs) : std::size(arm64_relocs);
+
+    
+    for (size_t i = 0; i < relocCount; i++)
     {
         RelocationRecord rr;
-        rr.m_relocationType = relocTypes[i];
+        rr.m_relocationType = relocs[i].type;
         rr.m_symKind = RelocationRecord::SymKind::SlowPathAddr;
-        rr.m_offset = smcRegionOffset + i*4;
+        rr.m_offset = smcRegionOffset + relocs[i].offset;
         // SlowPathAddr + dcIcMissDestOffsetInSlowPath - PC
         //
-        rr.m_addend = static_cast<int64_t>(dcIcMissDestOffsetInSlowPath);
+        rr.m_addend = static_cast<int64_t>(dcIcMissDestOffsetInSlowPath) + relocs[i].addend;
         rlist.push_back(rr);
     }
 
@@ -2205,7 +2265,7 @@ DeegenCallIcLogicCreator::BaselineJitCodegenResult WARN_UNUSED DeegenCallIcLogic
     ReleaseAssert(smcRegionOffset + smcRegionLength <= mainLogicStencil.m_fastPathCode.size());
     // The SMC region should at least be long enough to hold a adrp + add + br sequence, check that for sanity
     //
-    ReleaseAssert(smcRegionLength >= 12);
+    ReleaseAssert(smcRegionLength >= (x_targetX64 ? 5 : 12));
 
     size_t dcIcMissDestOffset = mainLogicStencil.RetrieveLabelDistanceComputationResult(icInfo.m_symbolNameForDcIcMissLogicLabelOffset);
     ReleaseAssert(dcIcMissDestOffset < mainLogicStencil.m_slowPathCode.size());
@@ -2482,9 +2542,9 @@ DeegenCallIcLogicCreator::BaselineJitCodegenResult WARN_UNUSED DeegenCallIcLogic
         BranchInst::Create(ccBB /*trueBB*/, insertIcDcModeBB /*falseBB*/, transitedToCCMode, dcBB);
 
         Value* patchableJmpAddr = GetElementPtrInst::CreateInBounds(llvm_type_of<uint8_t>(ctx), fastPathAddrOfOwningStencil,
-                                                                       { CreateLLVMConstantInt<uint64_t>(ctx, smcRegionOffset) }, "", insertIcDcModeBB);
+                                                                       { CreateLLVMConstantInt<uint64_t>(ctx, smcRegionOffset + (x_targetX64 ? 1 : 0)) }, "", insertIcDcModeBB);
 
-        Value* icMissAddr = X64PatchableJumpUtil::GetDest(patchableJmpAddr, insertIcDcModeBB);
+        Value* icMissAddr = CreateCallToDeegenCommonSnippet(module.get(), "GetJmpDest", { patchableJmpAddr }, insertIcDcModeBB);
         Value* icMissAddrI64 = new PtrToIntInst(icMissAddr, llvm_type_of<uint64_t>(ctx), "", insertIcDcModeBB);
 
         CreateCallToDeegenCommonSnippet(module.get(), "SetJmpDest", { patchableJmpAddr, dcJitAddr /*newDest*/ }, insertIcDcModeBB);
@@ -2595,9 +2655,9 @@ DeegenCallIcLogicCreator::BaselineJitCodegenResult WARN_UNUSED DeegenCallIcLogic
         Value* jitAddr = new LoadInst(llvm_type_of<void*>(ctx), jitAddrAlloca, "", insertIcCcModeBB);
 
         Value* patchableJmpAddr = GetElementPtrInst::CreateInBounds(llvm_type_of<uint8_t>(ctx), fastPathAddrOfOwningStencil,
-                                                                       { CreateLLVMConstantInt<uint64_t>(ctx, smcRegionOffset + smcRegionLength - 12) }, "", insertIcCcModeBB);
+                                                                       { CreateLLVMConstantInt<uint64_t>(ctx, smcRegionOffset + smcRegionLength - (x_targetX64 ? 4 : 12)) }, "", insertIcCcModeBB);
 
-        Value* icMissAddr = X64PatchableJumpUtil::GetDest(patchableJmpAddr, insertIcCcModeBB);
+        Value* icMissAddr = CreateCallToDeegenCommonSnippet(module.get(), "GetJmpDest", { patchableJmpAddr }, insertIcCcModeBB);
         Value* icMissAddrI64 = new PtrToIntInst(icMissAddr, llvm_type_of<uint64_t>(ctx), "", insertIcCcModeBB);
 
         CreateCallToDeegenCommonSnippet(module.get(), "SetJmpDest", { patchableJmpAddr, jitAddr /*newDest*/ }, insertIcCcModeBB);
@@ -2687,24 +2747,24 @@ DeegenCallIcLogicCreator::BaselineJitCodegenResult WARN_UNUSED DeegenCallIcLogic
     {
         disasmForAudit = dcRes.m_disasmForAudit + ccRes.m_disasmForAudit;
 
-        disasmForAudit += "# Initial DC miss dest offset (relative to stencil, not bytecode) = " + std::to_string(dcIcMissDestOffset) +
+        disasmForAudit += x_asmCommentStart + " Initial DC miss dest offset (relative to stencil, not bytecode) = " + std::to_string(dcIcMissDestOffset) +
             ", CC miss dest offset = " + std::to_string(ccIcMissDestOffset) + "\n\n";
 
         disasmForAudit += smcRes.m_disasmForAudit;
 
-        disasmForAudit += "# Direct-call IC code length = " + std::to_string(dcRes.m_icSize) + "\n";
-        disasmForAudit += "# Direct-call IC CodePtr patch records:\n";
+        disasmForAudit += x_asmCommentStart + " Direct-call IC code length = " + std::to_string(dcRes.m_icSize) + "\n";
+        disasmForAudit += x_asmCommentStart + " Direct-call IC CodePtr patch records:\n";
         for (auto& item : dcRes.m_codePtrPatchRecords)
         {
-            disasmForAudit += std::string("#     offset = ") + std::to_string(item.first) + (item.second == JitCallInlineCacheTraits::PatchRecordKind::Int64 ? " (64-bit)\n" : " (32-bit)\n");
+            disasmForAudit += x_asmCommentStart + std::string("     offset = ") + std::to_string(item.first) + (item.second == JitCallInlineCacheTraits::PatchRecordKind::Int64 ? " (64-bit)\n" : " (32-bit)\n");
         }
         disasmForAudit += "\n";
 
-        disasmForAudit += "# Closure-call IC code length = " + std::to_string(ccRes.m_icSize) + "\n";
-        disasmForAudit += "# Closure-call IC CodePtr patch records:\n";
+        disasmForAudit += x_asmCommentStart + " Closure-call IC code length = " + std::to_string(ccRes.m_icSize) + "\n";
+        disasmForAudit += x_asmCommentStart + " Closure-call IC CodePtr patch records:\n";
         for (auto& item : ccRes.m_codePtrPatchRecords)
         {
-            disasmForAudit += std::string("#     offset = ") + std::to_string(item.first) + (item.second == JitCallInlineCacheTraits::PatchRecordKind::Int64 ? " (64-bit)\n" : " (32-bit)\n");
+            disasmForAudit += x_asmCommentStart + std::string("     offset = ") + std::to_string(item.first) + (item.second == JitCallInlineCacheTraits::PatchRecordKind::Int64 ? " (64-bit)\n" : " (32-bit)\n");
         }
         disasmForAudit += "\n";
     }

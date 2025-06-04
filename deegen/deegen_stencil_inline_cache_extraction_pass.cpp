@@ -1,6 +1,7 @@
 #include "deegen_stencil_inline_cache_extraction_pass.h"
 #include "deegen_parse_asm_text.h"
 #include "deegen_recover_asm_cfg.h"
+#include "drt/platform.h"
 
 namespace dast {
 
@@ -178,72 +179,67 @@ std::vector<DeegenStencilExtractedICAsm> WARN_UNUSED RunStencilInlineCacheLogicE
             clonedList.push_back(block->Clone(file));
         }
 
-        std::set<std::string> icBlockLabelNames;
-        std::map<std::string, std::string> icVeneers;
-        std::vector<X64AsmBlock*> veneers;
-        for (auto block : clonedList)
+        if (!x_targetX64)
         {
-            icBlockLabelNames.insert(block->m_normalizedLabelName);
-        }
-
-        for (auto block : clonedList)
-        {
-            for (size_t i = 0; i < block->m_lines.size(); i++)
+            std::set<std::string> icBlockLabelNames;
+            std::map<std::string, std::string> icVeneers;
+            std::vector<X64AsmBlock*> veneers;
+            for (auto block : clonedList)
             {
-                if (!block->m_lines[i].IsDirectUnconditionalJumpInst() && !block->m_lines[i].IsConditionalJumpInst())
+                icBlockLabelNames.insert(block->m_normalizedLabelName);
+            }
+
+            for (auto block : clonedList)
+            {
+                for (size_t i = 0; i < block->m_lines.size(); i++)
                 {
-                    continue;
-                }
+                    if (!block->m_lines[i].IsDirectUnconditionalJumpInst() && !block->m_lines[i].IsConditionalJumpInst())
+                    {
+                        continue;
+                    }
 
-                std::string label = block->m_lines[i].GetLabel();
+                    std::string label = block->m_lines[i].GetLabel();
 
-                // This is the ic miss dest we want it do be contained in the b.ne instruction and not a veneer
-                //
-                // if (label == "__deegen_cp_placeholder_10003")
-                //     continue;
+                    if (icBlockLabelNames.count(label))
+                        continue;
 
-                if (icBlockLabelNames.count(label))
-                    continue;
+                    if (auto search = icVeneers.find(label); search != icVeneers.end())
+                    {
+                        label = search->second;
+                    }
+                    else
+                    {
+                        std::string newVeneerLabel = file->m_labelNormalizer.GetUniqueLabel();
+                        std::unique_ptr<X64AsmBlock> veneer = std::make_unique<X64AsmBlock>();
+                        veneer->m_prefixText = newVeneerLabel + ":\n";
+                        veneer->m_normalizedLabelName = newVeneerLabel;
+                        veneer->m_endsWithJmpToLocalLabel = false;
+                        veneer->m_lines.push_back(X64AsmLine::Parse("\tadrp\tx16,\t" + label));
+                        veneer->m_lines.push_back(X64AsmLine::Parse("\tadd\tx16,\tx16,\t:lo12:" + label));
+                        veneer->m_lines.push_back(X64AsmLine::Parse("\tbr\tx16"));
 
-                // if (isB && label.starts_with("__deegen_cp_placeholder_"))
-                //     continue;
+                        icVeneers.insert_or_assign(label, newVeneerLabel);
 
-                if (auto search = icVeneers.find(label); search != icVeneers.end())
-                {
-                    label = search->second;
-                }
-                else
-                {
-                    std::string newVeneerLabel = file->m_labelNormalizer.GetUniqueLabel();
-                    std::unique_ptr<X64AsmBlock> veneer = std::make_unique<X64AsmBlock>();
-                    veneer->m_prefixText = newVeneerLabel + ":\n";
-                    veneer->m_normalizedLabelName = newVeneerLabel;
-                    veneer->m_endsWithJmpToLocalLabel = false;
-                    veneer->m_lines.push_back(X64AsmLine::Parse("\tadrp\tx16,\t" + label));
-                    veneer->m_lines.push_back(X64AsmLine::Parse("\tadd\tx16,\tx16,\t:lo12:" + label));
-                    veneer->m_lines.push_back(X64AsmLine::Parse("\tbr\tx16"));
+                        label = newVeneerLabel;
 
-                    icVeneers.insert_or_assign(label, newVeneerLabel);
+                        veneers.push_back(veneer.get());
+                        file->m_blockHolders.push_back(std::move(veneer));
+                    }
 
-                    label = newVeneerLabel;
+                    block->m_lines[i].GetLabel() = label;
 
-                    veneers.push_back(veneer.get());
-                    file->m_blockHolders.push_back(std::move(veneer));
-                }
-
-                block->m_lines[i].GetLabel() = label;
-
-                if (block->m_lines[i].IsDirectUnconditionalJumpInst())
-                {
-                    block->m_terminalJmpTargetLabel = label;
-                    block->m_endsWithJmpToLocalLabel = true;
+                    if (block->m_lines[i].IsDirectUnconditionalJumpInst())
+                    {
+                        block->m_terminalJmpTargetLabel = label;
+                        block->m_endsWithJmpToLocalLabel = true;
+                    }
                 }
             }
-        }
 
-        for (X64AsmBlock* block : veneers)
-        {
-            clonedList.push_back(block);
+            for (X64AsmBlock* block : veneers)
+            {
+                clonedList.push_back(block);
+            }
         }
 
         item.m_blocks = clonedList;

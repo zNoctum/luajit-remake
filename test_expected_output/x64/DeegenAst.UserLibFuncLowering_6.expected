@@ -1,0 +1,45 @@
+; ModuleID = 'extracted_ir'
+source_filename = "/home/u/project/annotated/unit_test/user_lib_func_api.cpp"
+target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-unknown-linux-gnu"
+
+%class.StackFrameHeader = type { ptr, ptr, ptr, %struct.SystemHeapPointer, i32 }
+%struct.SystemHeapPointer = type { i32 }
+
+; Function Attrs: nounwind
+define dso_local ghccc void @DeegenInternal_UserLibFunctionReturnContinuationTrueEntryPoint_testcont1(ptr %0, ptr nocapture readonly %1, ptr nocapture readnone %2, ptr %vmBasePointer, i64 %3, ptr nocapture readonly %4, i64 %5, i64 %6, i64 %7, i64 %8, double %9, double %10, double %11, double %12, double %13, double %14) #0 {
+  %16 = getelementptr i8, ptr %1, i64 -24
+  %.val = load ptr, ptr %16, align 8, !tbaa !2
+  %17 = trunc i64 %5 to i32
+  %18 = sitofp i32 %17 to double
+  %.sroa.0.0.copyload.i.i = load i64, ptr %4, align 8, !tbaa.struct !9
+  store double %18, ptr %.val, align 8
+  %19 = getelementptr inbounds i64, ptr %.val, i64 1
+  store i64 %.sroa.0.0.copyload.i.i, ptr %19, align 8
+  %20 = getelementptr inbounds i64, ptr %.val, i64 2
+  store i64 %8, ptr %20, align 8
+  %21 = getelementptr %class.StackFrameHeader, ptr %.val, i64 -1, i32 2
+  %22 = load ptr, ptr %21, align 8, !tbaa !12
+  musttail call ghccc void %22(ptr %0, ptr nonnull %.val, ptr undef, ptr %vmBasePointer, i64 %3, ptr nonnull %.val, i64 2, i64 undef, i64 undef, i64 %8, double undef, double undef, double undef, double undef, double undef, double undef) #1
+  ret void
+}
+
+attributes #0 = { nounwind "frame-pointer"="none" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+bmi,+crc32,+cx8,+fxsr,+mmx,+popcnt,+sse,+sse2,+sse3,+sse4.1,+sse4.2,+ssse3,+x87" "tune-cpu"="generic" }
+attributes #1 = { nounwind }
+
+!llvm.linker.options = !{}
+!llvm.module.flags = !{!0, !1}
+
+!0 = !{i32 1, !"wchar_size", i32 4}
+!1 = !{i32 7, !"uwtable", i32 2}
+!2 = !{!3, !4, i64 8}
+!3 = !{!"_ZTS16StackFrameHeader", !4, i64 0, !4, i64 8, !4, i64 16, !7, i64 24, !8, i64 28}
+!4 = !{!"any pointer", !5, i64 0}
+!5 = !{!"omnipotent char", !6, i64 0}
+!6 = !{!"Simple C++ TBAA"}
+!7 = !{!"_ZTS17SystemHeapPointerIhE", !8, i64 0}
+!8 = !{!"int", !5, i64 0}
+!9 = !{i64 0, i64 8, !10}
+!10 = !{!11, !11, i64 0}
+!11 = !{!"long", !5, i64 0}
+!12 = !{!3, !4, i64 16}
