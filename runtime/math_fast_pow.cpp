@@ -57,6 +57,6 @@
 #pragma clang diagnostic ignored "-Wconditional-uninitialized"
 double WARN_UNUSED math_fast_pow(double b, double ex)
 {
-    return pow(b, ex);
+    return ex == 0.0 ? 1.0 : pow(b, ex);
 }
 #pragma clang diagnostic pop
