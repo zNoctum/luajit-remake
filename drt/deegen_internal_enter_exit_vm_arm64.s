@@ -32,33 +32,37 @@ deegen_enter_vm_from_c_impl:
 	# Note that we happen to push 96 bytes, and we are branching to the callee.
 	# So the callee will see a 16-byte-aligned sp as expected. 
 	#
-	sub sp, sp,   #96
-	stp x19, x20, [sp, #0]
-	stp x21, x22, [sp, #16]
-	stp x23, x24, [sp, #32]
-	stp x25, x26, [sp, #48]
-	stp x27, x28, [sp, #64]
-	stp x29, x30, [sp, #80]
-	
+        stp     d15, d14, [sp, #-160]!
+        stp     d13, d12, [sp, #16]
+        stp     d11, d10, [sp, #32]
+        stp     d9, d8, [sp, #48]
+        stp     x29, x30, [sp, #64]
+        stp     x28, x27, [sp, #80]
+        stp     x26, x25, [sp, #96]
+        stp     x24, x23, [sp, #112]
+        stp     x22, x21, [sp, #128]
+        stp     x20, x19, [sp, #144]
+        add     x29, sp, #64
+
 	# Set up the registers expected by the GHC calling convention callee
 	#
-	
+
 	# Move CoroutineCtx (x19)
 	#
 	mov     x19, x0
-	
+
 	# Move stackBase (x20)
 	#
 	mov 	x20, x2
-	
+
 	# Move numArgs (x21)
 	#
 	mov     x21, x3
-	
+
 	# Move vmBasePointer (x22)
 	#
 	mov     x22, x5
-	
+
 	# set up tag register 1 (x23, x_int32Tag)
 	#
 	mov     x23, #281470681743360
@@ -71,11 +75,11 @@ deegen_enter_vm_from_c_impl:
 	# Set isMustTail64 (x25) to 0
 	#
 	mov     x25, xzr
-	
+
 	# Unused (x26)
-	
+
 	# Unused (x27)
-	
+
 	# set up tag register 2 (x28, x_mivTag)
 	#
 	mov     x28, #-1125899906842497
@@ -122,19 +126,22 @@ deegen_internal_use_only_exit_vm_epilogue:
 	#
 	mov     x0, x24
 	mov     x1, x25
-	
+
 	# Clean up the stack and restore the callee-saved registers of C calling convention
 	#
-	ldp x29, x30, [sp, #80]
-	ldp x27, x28, [sp, #64]
-	ldp x25, x26, [sp, #48]
-	ldp x23, x24, [sp, #32]
-	ldp x21, x22, [sp, #16]
-	ldp x19, x20, [sp, #0]
-	add sp, sp,   #96
+        ldp     x20, x19, [sp, #144]
+        ldp     x22, x21, [sp, #128]
+        ldp     x24, x23, [sp, #112]
+        ldp     x26, x25, [sp, #96]
+        ldp     x28, x27, [sp, #80]
+        ldp     x29, x30, [sp, #64]
+        ldp     d9, d8, [sp, #48]
+        ldp     d11, d10, [sp, #32]
+        ldp     d13, d12, [sp, #16]
+        ldp     d15, d14, [sp], #160
 
 	ret
-	
+
 .Lfunc_end_deegen_internal_use_only_exit_vm_epilogue:
 	.size	deegen_internal_use_only_exit_vm_epilogue, .Lfunc_end_deegen_internal_use_only_exit_vm_epilogue-deegen_internal_use_only_exit_vm_epilogue
 
