@@ -5,19 +5,24 @@
 
 class VM;
 
+extern __thread VM* activeVMForCurrentThread;
+extern "C" void* __attribute__((__const__, __warn_unused_result__)) DeegenImpl_GetVMBasePointer();
+
+
 // The whole point here is to not include "vm.h", so we have to hardcode the value
 // However, the correctness of this value is static_asserted in vm.h
 //
 static constexpr uintptr_t x_segmentRegisterSelfReferencingOffset = 0;
 
-extern "C" void* __attribute__((__const__)) WARN_UNUSED DeegenImpl_GetVMBasePointer();
-extern thread_local VM* activeVMForCurrentThread;
-
 // Same as VM::GetActiveVMForCurrentThread(), but no need to include vm.h
 //
-inline VM* VM_GetActiveVMForCurrentThread()
+inline VM* __attribute__((__const__, __flatten__, __always_inline__)) VM_GetActiveVMForCurrentThread()
 {
+    #ifdef DEEGEN_DEF_BYTECODE
     VM* vm = reinterpret_cast<VM*>(DeegenImpl_GetVMBasePointer());
+    #else
+    VM* vm = activeVMForCurrentThread;
+    #endif
     assert(vm != nullptr);
     return vm;
 }
@@ -81,7 +86,7 @@ template<typename T>
 inline uintptr_t VM_PointerToOffset(T* ptr)
 {
     AssertIsValidHeapPointer(ptr);
-    return reinterpret_cast<uintptr_t>(ptr) - reinterpret_cast<uintptr_t>(DeegenImpl_GetVMBasePointer());
+    return reinterpret_cast<uintptr_t>(ptr) - reinterpret_cast<uintptr_t>(VM_GetActiveVMForCurrentThread());
 }
 
 template<typename T>

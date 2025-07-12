@@ -1,5 +1,7 @@
 #pragma once
 
+#define DEEGEN_DEF_BYTECODE
+
 #include "tvalue.h"
 #include "deegen_for_each_bytecode_intrinsic.h"
 

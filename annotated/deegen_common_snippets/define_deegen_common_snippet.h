@@ -1,5 +1,7 @@
 #pragma once
 
+#define DEEGEN_DEF_BYTECODE
+
 #include "common.h"
 
 #define DEEGEN_COMMON_SNIPPET_NAME_VARNAME x_deegen_common_snippet_name

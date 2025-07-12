@@ -1,7 +1,8 @@
-#include <memory_ptr.h>
+#define DEEGEN_DEF_BYTECODE
+#include "memory_ptr.h"
 
-thread_local VM* activeVMForCurrentThread = nullptr;
+__thread VM* activeVMForCurrentThread;
 
-extern "C" void* __attribute__((__const__)) WARN_UNUSED DeegenImpl_GetVMBasePointer() {
+extern "C" void* __attribute__((__const__, __warn_unused_result__)) DeegenImpl_GetVMBasePointer() {
     return activeVMForCurrentThread;
 }
